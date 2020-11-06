@@ -6,39 +6,39 @@ gave at the last ElixirConf.eu</a> conference, one of my colleagues
 pointed out that I glossed over the details of one of the examples. This
 prompted me to do some digging and I want to share what I found.</p><div id=outline-container-the-problem class=outline-3><h3 id=the-problem>The problem</h3><div id=outline-text-the-problem class=outline-text-3><p>The example in question is a module responsible to fetch a file from a
 remote source and write it at the specified path.</p><p>The implementation is very simplistic and lacks both error handling and
-retry logic.</p><div class="src src-elixir"><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-elixir data-lang=elixir>  defmodule <span style=color:#a6e22e>Perils.Examples.Store</span> do
-     def write(file_name, url) do
-       with {<span style=color:#e6db74>:ok</span>, data} <span style=color:#f92672>&lt;-</span> get(url) do
+retry logic.</p><div class="src src-elixir"><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-elixir data-lang=elixir>  <span style=color:#66d9ef>defmodule</span> <span style=color:#a6e22e>Perils.Examples.Store</span> <span style=color:#66d9ef>do</span>
+     <span style=color:#66d9ef>def</span> write(file_name, url) <span style=color:#66d9ef>do</span>
+       with {<span style=color:#e6db74>:ok</span>, data} <span style=color:#f92672>&lt;-</span> get(url) <span style=color:#66d9ef>do</span>
          <span style=color:#a6e22e>File</span><span style=color:#f92672>.</span>write!(file_name, data)
-       end
-     end
+       <span style=color:#66d9ef>end</span>
+     <span style=color:#66d9ef>end</span>
 
-     defp get(url) do
+     <span style=color:#66d9ef>defp</span> get(url) <span style=color:#66d9ef>do</span>
        <span style=color:#e6db74>:httpc</span><span style=color:#f92672>.</span>request(<span style=color:#e6db74>:get</span>, {<span style=color:#a6e22e>String</span><span style=color:#f92672>.</span>to_charlist(url), []}, [], [])
-       <span style=color:#f92672>|&gt;</span> case do
+       <span style=color:#f92672>|&gt;</span> <span style=color:#66d9ef>case</span> <span style=color:#66d9ef>do</span>
          {<span style=color:#e6db74>:ok</span>, result} <span style=color:#f92672>-&gt;</span>
            {{_, <span style=color:#ae81ff>200</span>, _}, _headers, body} <span style=color:#f92672>=</span> result
            {<span style=color:#e6db74>:ok</span>, body}
 
          error <span style=color:#f92672>-&gt;</span>
            error
-       end
-     end
-   end</code></pre></div></div><p>Looking at the code, we can see that it relies on <code class=verbatim>:httpc</code>, the http
+       <span style=color:#66d9ef>end</span>
+     <span style=color:#66d9ef>end</span>
+   <span style=color:#66d9ef>end</span></code></pre></div></div><p>Looking at the code, we can see that it relies on <code class=verbatim>:httpc</code>, the http
 client that ships with Erlang/OTP.</p><p>Both in my talk and in the initial transcription draft, I pointed out
 that running this code with a 12MB file would result in a memory usage
 peak at around 350/375MB, but didn't really look into why.</p><p><img src=/img/a-short-profiling-story/before.png alt="A chart visualizing a 350MB memory spike" class=left></p><p>Such delta between the file size and peak memory usage is suspicious and
 worth investigating.</p></div></div><div id=outline-container-the-investigation class=outline-3><h3 id=the-investigation>The investigation</h3><div id=outline-text-the-investigation class=outline-text-3><p>I started by setting up an <a href=https://github.com/parroty/exprof>exprof</a>
 test, so that I could profile resource usage associated with the
-problematic function.</p><div class="src src-elixir"><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-elixir data-lang=elixir>  defmodule <span style=color:#a6e22e>A</span> do
-    import <span style=color:#a6e22e>ExProf.Macro</span>
+problematic function.</p><div class="src src-elixir"><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-elixir data-lang=elixir>  <span style=color:#66d9ef>defmodule</span> <span style=color:#a6e22e>A</span> <span style=color:#66d9ef>do</span>
+    <span style=color:#f92672>import</span> <span style=color:#a6e22e>ExProf.Macro</span>
 
-    def run(url) do
-      profile do
+    <span style=color:#66d9ef>def</span> run(url) <span style=color:#66d9ef>do</span>
+      profile <span style=color:#66d9ef>do</span>
         <span style=color:#a6e22e>Perils.Examples.Store</span><span style=color:#f92672>.</span>write(<span style=color:#e6db74>&#34;magazine.pdf&#34;</span>, url)
-      end
-    end
-  end
+      <span style=color:#66d9ef>end</span>
+    <span style=color:#66d9ef>end</span>
+  <span style=color:#66d9ef>end</span>
 
   url <span style=color:#f92672>=</span> <span style=color:#e6db74>&#34;https://web-examples.pspdfkit.com/magazine/example.pdf&#34;</span> <span style=color:#75715e>#12MB</span>
   {records, _block_result} <span style=color:#f92672>=</span> <span style=color:#a6e22e>A</span><span style=color:#f92672>.</span>run(url)
