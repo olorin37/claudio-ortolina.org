@@ -1,13 +1,860 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Claudio Ortolina</title><link>http://claudio-ortolina.org/</link><description>Recent content on Claudio Ortolina</description><generator>Hugo -- gohugo.io</generator><language>en-gb</language><copyright>Copyright 2020 © Claudio Ortolina</copyright><lastBuildDate>Tue, 10 Nov 2020 08:41:30 +0000</lastBuildDate><atom:link href="http://claudio-ortolina.org/index.xml" rel="self" type="application/rss+xml"/><item><title>Using Finch With Sentry</title><link>http://claudio-ortolina.org/posts/using-finch-with-sentry/</link><pubDate>Tue, 10 Nov 2020 08:41:30 +0000</pubDate><guid>http://claudio-ortolina.org/posts/using-finch-with-sentry/</guid><description>
-How to setup Sentry to use the Finch HTTP Client</description></item><item><title>Fish</title><link>http://claudio-ortolina.org/posts/fish/</link><pubDate>Fri, 06 Nov 2020 12:28:16 +0000</pubDate><guid>http://claudio-ortolina.org/posts/fish/</guid><description>
+&lt;p>
+A few weeks ago I added enabled support for &lt;a href="https://sentry.io">Sentry&lt;/a> inside &lt;a href="https://github.com/fully-forged/tune">Tune&lt;/a>, my Spotify browser/client. Even if I&amp;#39;m pretty much the only user (I built it for myself after all), having exception tracking has already proved to be useful - band and song names can really create all sorts of issues.&lt;/p>
+&lt;p>
+The &lt;a href="https://hex.pm/packages/sentry">official Sentry package&lt;/a> works as advertised and by default it communicates using &lt;a href="https://hex.pm/packages/hackney">Hackney&lt;/a> as a http client. As I&amp;#39;ve been using &lt;a href="https://hex.pm/packages/finch">Finch&lt;/a> in the project, I was pleased to see that Sentry exposed a &lt;code>client&lt;/code> configuration option that allowed using your own module, as long as it implemented the &lt;code>Sentry.HTTPClient&lt;/code> behaviour.&lt;/p>
+&lt;p>
+The advantage in swapping the http client library (on top of uniforming the building blocks of the application) is that Finch has support for &lt;a href="https://hex.pm/packages/telemetry">Telemetry&lt;/a> metrics.&lt;/p>
+&lt;blockquote>
+&lt;p>Update #1: Thanks to Wojtek Mach for &lt;a href="https://github.com/fully-forged/tune/pull/131">a more streamlined implementation.&lt;/a>&lt;/p>
+&lt;/blockquote>
+&lt;p>
+The module I wrote is quite short:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir">&lt;span style="color:#66d9ef">defmodule&lt;/span> &lt;span style="color:#a6e22e">Sentry.FinchClient&lt;/span> &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#a6e22e">@moduledoc&lt;/span> &lt;span style="color:#e6db74">&amp;#34;&amp;#34;&amp;#34;
+&lt;/span>&lt;span style="color:#e6db74"> Defines a small shim to use `Finch` as a `Sentry.HTTPClient`.
+&lt;/span>&lt;span style="color:#e6db74"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span style="color:#a6e22e">@behaviour&lt;/span> &lt;span style="color:#a6e22e">Sentry.HTTPClient&lt;/span>
+&lt;span style="color:#a6e22e">@impl&lt;/span> &lt;span style="color:#66d9ef">true&lt;/span>
+&lt;span style="color:#66d9ef">def&lt;/span> child_spec &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#a6e22e">Finch&lt;/span>&lt;span style="color:#f92672">.&lt;/span>child_spec(&lt;span style="color:#e6db74">name&lt;/span>: &lt;span style="color:#a6e22e">Sentry.Finch&lt;/span>)
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#a6e22e">@impl&lt;/span> &lt;span style="color:#66d9ef">true&lt;/span>
+&lt;span style="color:#66d9ef">def&lt;/span> post(url, headers, body) &lt;span style="color:#66d9ef">do&lt;/span>
+request &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#a6e22e">Finch&lt;/span>&lt;span style="color:#f92672">.&lt;/span>build(&lt;span style="color:#e6db74">:post&lt;/span>, url, headers, body)
+&lt;span style="color:#66d9ef">case&lt;/span> &lt;span style="color:#a6e22e">Finch&lt;/span>&lt;span style="color:#f92672">.&lt;/span>request(request, &lt;span style="color:#a6e22e">Sentry.Finch&lt;/span>) &lt;span style="color:#66d9ef">do&lt;/span>
+{&lt;span style="color:#e6db74">:ok&lt;/span>, response} &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+{&lt;span style="color:#e6db74">:ok&lt;/span>, response&lt;span style="color:#f92672">.&lt;/span>status, response&lt;span style="color:#f92672">.&lt;/span>headers, response&lt;span style="color:#f92672">.&lt;/span>body}
+error &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+error
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+The trickiest bit was to get the &lt;code>child_spec/0&lt;/code> callback right while keeping &lt;a href="https://erlang.org/doc/man/dialyzer.html">dialyzer&lt;/a> happy. The first implementation I wrote was simply &lt;code>{Finch, name: Sentry.Finch}&lt;/code>, but that would fail to satisfy &lt;a href="https://hexdocs.pm/sentry/Sentry.HTTPClient.html#c:child_spec/0">the typespec defined for &lt;code>child_spec/0&lt;/code>&lt;/a>. I then switched to a more verbose version:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir"> &lt;span style="color:#66d9ef">def&lt;/span> child_spec &lt;span style="color:#66d9ef">do&lt;/span>
+opts &lt;span style="color:#f92672">=&lt;/span> [&lt;span style="color:#e6db74">name&lt;/span>: &lt;span style="color:#a6e22e">Sentry.Finch&lt;/span>]
+&lt;span style="color:#a6e22e">Supervisor&lt;/span>&lt;span style="color:#f92672">.&lt;/span>child_spec(
+%{
+&lt;span style="color:#e6db74">id&lt;/span>: __MODULE__,
+&lt;span style="color:#e6db74">start&lt;/span>: {&lt;span style="color:#a6e22e">Finch&lt;/span>, &lt;span style="color:#e6db74">:start_link&lt;/span>, [opts]},
+&lt;span style="color:#e6db74">type&lt;/span>: &lt;span style="color:#e6db74">:supervisor&lt;/span>
+},
+[]
+)
+&lt;span style="color:#66d9ef">end&lt;/span>&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+This version satisfied dialyzer, but turns out there&amp;#39;s a simpler way. After publishing this blog post, Wojtek Mach reached out and submitted a PR to streamline the specification to the version shown in the full example above.&lt;/p>
+&lt;p>
+I also updated my production configuration:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir">config &lt;span style="color:#e6db74">:sentry&lt;/span>,
+&lt;span style="color:#e6db74">dsn&lt;/span>: {&lt;span style="color:#e6db74">:system&lt;/span>, &lt;span style="color:#e6db74">&amp;#34;SENTRY_DSN&amp;#34;&lt;/span>},
+&lt;span style="color:#e6db74">environment_name&lt;/span>: &lt;span style="color:#e6db74">:prod&lt;/span>,
+&lt;span style="color:#e6db74">enable_source_code_context&lt;/span>: &lt;span style="color:#66d9ef">true&lt;/span>,
+&lt;span style="color:#e6db74">root_source_code_path&lt;/span>: &lt;span style="color:#a6e22e">File&lt;/span>&lt;span style="color:#f92672">.&lt;/span>cwd!(),
+&lt;span style="color:#e6db74">client&lt;/span>: &lt;span style="color:#a6e22e">Sentry.FinchClient&lt;/span>,
+&lt;span style="color:#e6db74">included_environments&lt;/span>: [&lt;span style="color:#e6db74">:prod&lt;/span>]&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+You can of course expand on this implementation if you need to pass more options to the &lt;code>Finch&lt;/code> child specification - I found that for my use case, defaults are fine, so for now I don&amp;#39;t need to add any configuration hooks.&lt;/p>
+&lt;p>
+To see the change in context, &lt;a href="https://github.com/fully-forged/tune/pull/122">this is the original PR&lt;/a>, with the &lt;a href="https://github.com/fully-forged/tune/pull/131">follow-up by Wojtek Mach&lt;/a>.&lt;/p></description></item><item><title>Fish</title><link>http://claudio-ortolina.org/posts/fish/</link><pubDate>Fri, 06 Nov 2020 12:28:16 +0000</pubDate><guid>http://claudio-ortolina.org/posts/fish/</guid><description>
 &lt;img src="http://claudio-ortolina.org/img/fish/cover.jpg"/>
-An introduction to one of my favourite artists of all time</description></item><item><title>Remote 1-on-1 meetings</title><link>http://claudio-ortolina.org/posts/one-on-one-notes/</link><pubDate>Wed, 04 Nov 2020 09:10:38 +0000</pubDate><guid>http://claudio-ortolina.org/posts/one-on-one-notes/</guid><description>
-Some things I learned while doing remote 1-on-1 meetings</description></item><item><title>A Short Profiling Story</title><link>http://claudio-ortolina.org/posts/a-short-profiling-story/</link><pubDate>Tue, 03 Nov 2020 11:42:42 +0000</pubDate><guid>http://claudio-ortolina.org/posts/a-short-profiling-story/</guid><description>
-Using profiling tools to understand and debug memory usage</description></item><item><title>About</title><link>http://claudio-ortolina.org/about/</link><pubDate>Tue, 03 Nov 2020 00:00:00 +0000</pubDate><guid>http://claudio-ortolina.org/about/</guid><description>
-Hello! I&amp;rsquo;m Claudio Ortolina and this is my website, an old-fashioned blog where I post about whatever I want.
-I currently work as a software engineer at PSPDFKit GmbH.
-If you run out of TV series to binge, you can watch any of my talks at Talks.
-You can contact me at cloud8421@gmail.com.</description></item><item><title>Talks</title><link>http://claudio-ortolina.org/talks/</link><pubDate>Tue, 03 Nov 2020 00:00:00 +0000</pubDate><guid>http://claudio-ortolina.org/talks/</guid><description>
-Talks This is a collection of conference talks I&amp;rsquo;ve given over time in reverse chronological order, along with their original abstracts.
-Taming side effects (Code BEAM STO 2019) The systems we build every day have side effects: save data, send emails, write logs, push metrics, you name it! Many errors and headaches come from the difficulties involved in working and testing such code.
-In this talk we&amp;rsquo;ll look at a simple approach on how to write logic that is side-effects rich to make easier to maintain and test, no matter if we are interacting with databases, external apis or any other type of service.</description></item></channel></rss>
+&lt;div id="outline-container-headline-1" class="outline-3">
+&lt;h3 id="headline-1">
+Prelude
+&lt;/h3>
+&lt;div id="outline-text-headline-1" class="outline-text-3">
+&lt;p>
+I have very early memories of rock music in my life. Since I was a toddler, my parents (and particularly my dad) got me used to listen to 80s rock music. Bands like Queen, Guns N&amp;#39; Roses, AC/DC, Van Halen, and Bon Jovi are ingrained in my memories as sounds of my childhood.&lt;/p>
+&lt;p>
+It&amp;#39;s not surprising that my taste in music has developed from there, branching out over the years in metal and progressive rock. Music is a constant companion of my daily life and contributed to the formation of my identity.&lt;/p>
+&lt;p>
+My taste changed and adapted: around ten years ago I was dismissing &lt;a href="https://en.wikipedia.org/wiki/Operation:_Mindcrime">&lt;em>Operation: Mindcrime&lt;/em>&lt;/a> by &lt;a href="https://en.wikipedia.org/wiki/Queensrÿche">Queensrÿche&lt;/a> as a mediocre album, but two years ago I picked it up again and it was a revelation. Something similar happened while listening to &lt;a href="https://en.wikipedia.org/wiki/Rage_Against_the_Machine">Rage Against the Machine&lt;/a>, &lt;a href="https://en.wikipedia.org/wiki/Tool">Tool&lt;/a> or &lt;a href="https://en.wikipedia.org/wiki/A_Perfect_Circle">A Perfect Circle&lt;/a>, didn&amp;#39;t like them years ago, absolutely love them now.&lt;/p>
+&lt;p>
+This change got me thinking - why do these bands resonate with me now?&lt;/p>
+&lt;p>
+I think the answer lies primarily in the integrity of the message connected to these bands: their perspective, political stance, perspective on life really struck a cord with me in my 30s. They take an explicit position around issues I care about.&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-headline-2" class="outline-3">
+&lt;h3 id="headline-2">
+Enter Marillion and Fish
+&lt;/h3>
+&lt;div id="outline-text-headline-2" class="outline-text-3">
+&lt;p>
+&lt;img src="http://claudio-ortolina.org/img/fish/fish-photo.jpg" alt="Fish&amp;#39;s portrait" class="left" style="float: left; margin-right: 1rem;" />
+&lt;/p>
+&lt;p>
+Until a year ago, I had a very cursory knowledge of &lt;a href="https://en.wikipedia.org/wiki/Marillion">Marillion&lt;/a>&amp;#39;s body of work. I kney they existed, that they have a substantial discography and that they represent an important page in the history of 80s and 90s prog.&lt;/p>
+&lt;p>
+One morning, Spotify&amp;#39;s suggestions algorithm decided to play &lt;a href="https://www.youtube.com/watch?v=lalBmbrWEvQ">&lt;em>Incommunicado&lt;/em>&lt;/a> and &lt;a href="https://www.youtube.com/watch?v=6COmtBk6lYo">&lt;em>Sugar Mice&lt;/em>&lt;/a> in the space of an hour. I found myself stopping what I was doing in both instances - there was something about those songs that really dragged my attention. I loved the music - but the lyrics stopped me in my tracks.&lt;/p>
+&lt;p>
+&lt;em>Incommunicado&lt;/em> is about ambition, the drive to make it big without taking responsibilities. In the context of the entire album, it&amp;#39;s both a metaphor for the difficult life of Torch, the main character whose life is falling to pieces, but also a direct description of the music business.&lt;/p>
+&lt;p>
+&lt;em>Sugar Mice&lt;/em> is a song about the devastating effects of unemployment and economic recession. The title refers to a popular english sweet made of sugar. The main refrain &amp;#34;We&amp;#39;re just sugar mice in the rain&amp;#34; gives a very vivid representation of how fragile life can be.&lt;/p>
+&lt;p>
+The words, references, and metaphors included in the lyrics stood out as something completely out of the ordinary - it &lt;span style="text-decoration: underline;">sounded&lt;/span> like poetry.&lt;/p>
+&lt;p>
+The more I explored other Marillion&amp;#39;s songs, the more I realized that what really resonated with me was &lt;a href="https://en.wikipedia.org/wiki/Fish_(singer)">Fish&lt;/a>, their initial singer and lyricist. Following his body of work after he left Marillion, I kept finding incredible songs.&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-headline-3" class="outline-3">
+&lt;h3 id="headline-3">
+Love and relationships
+&lt;/h3>
+&lt;div id="outline-text-headline-3" class="outline-text-3">
+&lt;blockquote>
+&lt;p>Do you remember?&lt;br>
+Barefoot on the lawn with shooting stars&lt;br>
+Do you remember?&lt;br>
+The loving on the floor in Belsize Park&lt;br>
+Do you remember?&lt;br>
+Dancing in stilettoes in the snow&lt;br>
+Do you remember?&lt;br>
+You never understood I had to go&lt;br>
+By the way, didn&amp;#39;t I break your heart?&lt;br>
+Please excuse me, I never meant to break your heart&lt;br>
+So sorry, I never meant to break your heart&lt;br>
+But you broke mine — &lt;em>Kayleigh, 1985&lt;/em>&lt;/p>
+&lt;/blockquote>
+&lt;p>
+By far the most succesful Marillion song, &lt;em>Kayleigh&lt;/em> is often cited as Fish&amp;#39;s apology to different women for the failure of their romantic relationships, a collage of vivid images and melancholic moments.&lt;/p>
+&lt;p>
+&lt;div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+&lt;iframe src="https://www.youtube.com/embed/OQ4oaLUilBc" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" allowfullscreen title="YouTube Video">&lt;/iframe>
+&lt;/div>
+&lt;/p>
+&lt;p>
+To me, this song sows the seeds of a theme that goes through a few songs written by Fish: work/life balance. Relationships fail when you divert your attention away from them, when you don&amp;#39;t put in everyday work to keep them going.&lt;/p>
+&lt;p>
+In &lt;em>Zoë 25&lt;/em> it&amp;#39;s the aftermath of another relationship that didn&amp;#39;t go well:&lt;/p>
+&lt;blockquote>
+&lt;p>When you&amp;#39;re looking for somebody, you might not even see them, &lt;br>
+When they&amp;#39;re standing there in front of you, right before your eyes, &lt;br>
+If you&amp;#39;re looking for somebody you&amp;#39;re gonna need some help, &lt;br>
+You know you&amp;#39;ll never find her when you&amp;#39;re looking for yourself. — &lt;em>Zoë 25, 2007&lt;/em>&lt;/p>
+&lt;/blockquote>
+&lt;p>
+In &lt;em>Garden of Remembrance&lt;/em>, it&amp;#39;s Alzheimer&amp;#39;s disease, something completely outside our control:&lt;/p>
+&lt;blockquote>
+&lt;p>He&amp;#39;s lost between the here and now&lt;br>
+Somewhere that he can&amp;#39;t be found&lt;br>
+She&amp;#39;s still here&lt;br>
+Her love a ghost of memory&lt;br>
+She&amp;#39;ll wait for an eternity&lt;br>
+He&amp;#39;s still here — &lt;em>Garden of Remembrance, 2020&lt;/em>&lt;/p>
+&lt;/blockquote>
+&lt;p>
+&lt;div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+&lt;iframe src="https://www.youtube.com/embed/-RwwU8Nvs1g" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" allowfullscreen title="YouTube Video">&lt;/iframe>
+&lt;/div>
+&lt;/p>
+&lt;p>
+In &lt;em>cliche&lt;/em>, the song lyrics use estabilished cliches to acknowledge that no matter how much hard you try, sometimes the simplest thing you can say is what matters.&lt;/p>
+&lt;blockquote>
+&lt;p>That&amp;#39;s why I&amp;#39;m trying to say with my deepest sincerity&lt;br>
+That&amp;#39;s why I&amp;#39;m finding it comes down to the basic simplicities&lt;br>
+The best way is with an old cliche&lt;br>
+It&amp;#39;s simply the best way is with an old cliche&lt;br>
+Always the best way is with an old cliche&lt;br>
+I&amp;#39;ll leave it to the best way, it&amp;#39;s an old cliche&lt;br>
+I love you. — &lt;em>Cliche, 1990&lt;/em>&lt;/p>
+&lt;/blockquote>
+&lt;p>
+In &lt;em>Punch and Judy&lt;/em>&lt;sup class="footnote-reference">&lt;a id="footnote-reference-1" href="#footnote-1">1&lt;/a>&lt;/sup> it&amp;#39;s the progressive deterioration of a relationship, escalating in murdering fantasies:&lt;/p>
+&lt;blockquote>
+&lt;p>Whatever happened to morning smiles,&lt;br>
+Whatever happened to wicked wiles, permissive styles,&lt;br>
+Whatever happened to twinkling eyes,&lt;br>
+Whatever happened to hard fast drives,&lt;br>
+Complements on unnatural size&lt;/p>
+&lt;p>
+Punch, Punch, Punch And Judy, Punch, Punch, Punch And Judy&lt;br>
+Punch, Punch, Punch And Judy.&lt;/p>
+&lt;p>
+Propping up a bar, family car,&lt;br>
+Sweating out a mortgage as a balding clerk,&lt;br>
+Punch And Judy, [Judy]&lt;br>
+World war three, suburbanshee,&lt;br>
+Just slip her these pills and I&amp;#39;ll be free.&lt;/p>
+&lt;p>
+No more Judy, Judy. Judy no more! Goodbye Judy! — &lt;em>Punch and Judy, 1984&lt;/em>&lt;/p>
+&lt;/blockquote>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-headline-4" class="outline-3">
+&lt;h3 id="headline-4">
+Living on your own terms
+&lt;/h3>
+&lt;div id="outline-text-headline-4" class="outline-text-3">
+&lt;p>
+Another recurring topic is the idea of living on your own terms. From &lt;em>Tongues&lt;/em>, where Fish lets out the frustration of dealing with lawyers during a very long lawsuit with music publisher EMI:&lt;/p>
+&lt;blockquote>
+&lt;p>Your entrenched opinions,&lt;br>
+On the border of arrogance,&lt;br>
+Dug in against the compromise.&lt;br>
+A position indefensible, your actions illogical&lt;br>
+You&amp;#39;re speaking in tongues&lt;/p>
+&lt;p>
+You swear contradictions&lt;br>
+Your tedious monologues, wielding authority,&lt;br>
+Demanding subservience, demanding&lt;br>
+I make your sense.&lt;br>
+Demanding speaking in tongues. — &lt;em>Tongues, 1991&lt;/em>&lt;/p>
+&lt;/blockquote>
+&lt;p>
+The inability to speak the same language becomes a massive blocker. The aforementioned lawsuit with EMI ended up being a fundamental event in Fish&amp;#39;s life, pushing him to pursue the ownership of all rights of his solo albums (except the first one, &lt;em>Vigil in a Wilderness of Mirrors&lt;/em>).&lt;/p>
+&lt;p>
+In &lt;em>Circle Line&lt;/em>&lt;sup class="footnote-reference">&lt;a id="footnote-reference-2" href="#footnote-2">2&lt;/a>&lt;/sup>, it&amp;#39;s the awareness of the 9-to-5 grind that is imposed on the majority of us:&lt;/p>
+&lt;blockquote>
+&lt;p>9 to 5&amp;#39;s the only time I try to kid myself that I&amp;#39;m still alive,&lt;br>
+That I&amp;#39;m living out the dream to earn my freedom from this rat race&lt;br>
+Where all I do&amp;#39;s survive, I live the lie, I serve my time.&lt;/p>
+&lt;p>
+The circle line.&lt;/p>
+&lt;p>
+Just another day, just another day, just another day,&lt;br>
+Just another day, just another day, just another day on the circle line.&lt;/p>
+&lt;p>
+The circle line, on the circle line. — &lt;em>Circle Line, 2007&lt;/em>&lt;/p>
+&lt;/blockquote>
+&lt;p>
+&lt;em>Lost Plot&lt;/em>, on losing track of what matters:&lt;/p>
+&lt;blockquote>
+&lt;p>I was blinded by light but the vision had died, I&amp;#39;d forgotten&lt;br>
+In time just what I was fighting for&lt;br>
+I&amp;#39;d forgotten who&amp;#39;s side I was on, the difference between&lt;br>
+Right and wrong&lt;br>
+I was out of my depth, going out of my mind, going down in&lt;br>
+A field where no prisoners are taken, no quarter is given&lt;br>
+The writing was small, it burned on the wall, I&amp;#39;d sold out&lt;br>
+My soul for what it was worth&lt;br>
+I&amp;#39;d lost the plot, my number was up, the game was over&lt;br>
+Snakes and ladders, a world of snakes and ladders, snakes&lt;br>
+And ladders — &lt;em>Lost Plot, 2004&lt;/em>&lt;/p>
+&lt;/blockquote>
+&lt;p>
+&lt;em>View from the Hill&lt;/em>, where we the hill is an endless collection of things that don&amp;#39;t matter and just keep us imprisoned.&lt;/p>
+&lt;p>
+&lt;figure class="center" >
+&lt;img src="http://claudio-ortolina.org/img/fish/the-hill.jpg" alt="Illustration of the Hill, one of the main metaphors in the album Vigil in a Wilderness of Mirrors" />
+&lt;figcaption class="center" >Artwork for the album of Vigil in the Wilderness of Mirrors, by Mark Wilkinson&lt;/figcaption>
+&lt;/figure>
+&lt;/p>
+&lt;blockquote>
+&lt;p>You sit and think that everything is coming up roses&lt;br>
+But you can&amp;#39;t see the weeds that entangle your feet&lt;br>
+You can&amp;#39;t see the wood for the trees &amp;#39;cause the forest is burning&lt;br>
+And you say it&amp;#39;s the smoke in your eyes that&amp;#39;s making you cry&lt;/p>
+&lt;p>
+They sold you the view from a hill&lt;br>
+They told you that the view from the hill would be&lt;br>
+Further than you have ever seen before&lt;br>
+They sold you a view from a hill&lt;br>
+They sold you a view from a hill — &lt;em>View from the Hill, 1990&lt;/em>&lt;/p>
+&lt;/blockquote>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-headline-5" class="outline-3">
+&lt;h3 id="headline-5">
+The system has failed (us)
+&lt;/h3>
+&lt;div id="outline-text-headline-5" class="outline-text-3">
+&lt;p>
+Fish has never shied away from commenting on politics: from &lt;em>Market Square Heroes&lt;/em> (Marillion&amp;#39;s first single) to &lt;em>Weltschmerz&lt;/em>, the ending track of his latest (and last) album.&lt;/p>
+&lt;p>
+&lt;em>Market Square Heroes&lt;/em>&lt;sup class="footnote-reference">&lt;a id="footnote-reference-3" href="#footnote-3">3&lt;/a>&lt;/sup> is once again an anthem of an angry generation that suffers the consequences of austerity and recession:&lt;/p>
+&lt;blockquote>
+&lt;p>I give peace signs when I wage war in the disco&lt;br>
+I&amp;#39;m the warrior in the ultra violet haze&lt;br>
+Armed with antisocial insecurity&lt;br>
+I plan the path of destiny from this maze&lt;/p>
+&lt;p>
+Cause I&amp;#39;m a Market Square hero gathering the storms to troop&lt;br>
+Cause I&amp;#39;m a Market Square hero speeding the beat of the street pulse&lt;br>
+Are you following me, are you following me?&lt;br>
+Well suffer my fallen angels and follow me&lt;br>
+I&amp;#39;m the Market Square hero, I&amp;#39;m the Market Square hero&lt;br>
+We are Market Square Heroes, to be Market Square Heroes — &lt;em>Market Square Heroes, 1982&lt;/em>&lt;/p>
+&lt;/blockquote>
+&lt;p>
+&lt;em>Weltschmerz&lt;/em> is a summary of all fights worth fighting - from climate change, to poverty, to the general failure of a political system that emphasized polarisation and division:&lt;/p>
+&lt;blockquote>
+&lt;p>I am a grey bearded warrior, a poet of no mean acclaim&lt;br>
+My words are my weapons that I proffer with disdain&lt;br>
+My melancholy aspect is something you can’t disregard&lt;br>
+My motives you cannot question nor my strong sense of right and wrong\\&lt;/p>
+&lt;p>
+I’ve formed the opinion that things can’t stay as they are&lt;br>
+My anger and my fury trapped like a wasp in a jar&lt;br>
+It’s never too late to make a brave new start&lt;br>
+When the revolution is called I will play my part — &lt;em>Weltschmerz, 2020&lt;/em>&lt;/p>
+&lt;/blockquote>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-headline-6" class="outline-3">
+&lt;h3 id="headline-6">
+Perfume River
+&lt;/h3>
+&lt;div id="outline-text-headline-6" class="outline-text-3">
+&lt;p>
+&lt;em>Perfume River&lt;/em>&lt;sup class="footnote-reference">&lt;a id="footnote-reference-4" href="#footnote-4">4&lt;/a>&lt;/sup> deserves a mention on its own: in this song, Fish looks at the consequences of the Vietnam War, whose images are burned in his childhood memory.&lt;/p>
+&lt;p>
+&lt;figure class="center" >
+&lt;img src="http://claudio-ortolina.org/img/fish/feast-of-consequences.jpg" alt="Artwork for the album Feast of Consequences" />
+&lt;figcaption class="center" >Artwork for the album Feast of Consequences by Mark Wilkinson&lt;/figcaption>
+&lt;/figure>
+&lt;/p>
+&lt;blockquote>
+&lt;p>Fire breathing dragons swarm in sweltering skies, spewing flame on innocents below&lt;br>
+Charred and brittle corpses, blackened evidence, I am enraged, I am afraid, I am forlorn&lt;br>
+The ashes from wise pages fly from libraries, tumble in the clouds of smoke and flies&lt;br>
+To lie as dust in corners of dark palaces, the fetid smell of revolution haunts the air.&lt;/p>
+&lt;p>
+Take me away to the Perfume River; carry me down to the perfume river&lt;br>
+Set me adrift on a well-stocked open boat&lt;br>
+Show me the way to the Perfume River, send me away down the perfume river&lt;br>
+Pour that sweet, sweet liquor down my throat; pour it down my throat — &lt;em>Perfume River, 2013&lt;/em>&lt;/p>
+&lt;/blockquote>
+&lt;p>
+Once again, the images evoked are incredibly strong, full of colour - red flames and rage, smoke, dust and death.&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-headline-7" class="outline-3">
+&lt;h3 id="headline-7">
+Visuals
+&lt;/h3>
+&lt;div id="outline-text-headline-7" class="outline-text-3">
+&lt;p>
+A powerful ingredient in Fish&amp;#39;s artistic work has always been his collaboration with &lt;a href="https://www.the-masque.com/mainpage.html">Mark Wilkinson&lt;/a>, who illustrated all Marillion&amp;#39;s albums (until Fish left the band) and all of Fish&amp;#39;s work. His surrealistic style is unmistakable and perfectly complements the &amp;#34;visual&amp;#34; nature of a lot of Fish&amp;#39;s songs.&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div class="footnotes">
+&lt;hr class="footnotes-separatator">
+&lt;div class="footnote-definitions">
+&lt;div class="footnote-definition">
+&lt;sup id="footnote-1">&lt;a href="#footnote-reference-1">1&lt;/a>&lt;/sup>
+&lt;div class="footnote-body">
+&lt;p>The title refers to Punch and Judy, the main characters of a puppet show popular in British culture. See &lt;a href="https://en.wikipedia.org/wiki/Punch_and_Judy">the Wikipedia page for more information.&lt;/a>&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div class="footnote-definition">
+&lt;sup id="footnote-2">&lt;a href="#footnote-reference-2">2&lt;/a>&lt;/sup>
+&lt;div class="footnote-body">
+&lt;p>The Circle Line is one of London&amp;#39;s Underground lines.&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div class="footnote-definition">
+&lt;sup id="footnote-3">&lt;a href="#footnote-reference-3">3&lt;/a>&lt;/sup>
+&lt;div class="footnote-body">
+&lt;p>The title is both a reference to a market square in Ailesbury, an english town, and Nietzsche&amp;#39;s &lt;a href="https://sourcebooks.fordham.edu/mod/nietzsche-madman.asp">Parable of the Madman&lt;/a>.&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div class="footnote-definition">
+&lt;sup id="footnote-4">&lt;a href="#footnote-reference-4">4&lt;/a>&lt;/sup>
+&lt;div class="footnote-body">
+&lt;p>The title refers to a river running through the city of Huế in Vietnam, one of the cities deeply affected by the Vietnam War.&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;/div>
+&lt;/div></description></item><item><title>Remote 1-on-1 meetings</title><link>http://claudio-ortolina.org/posts/one-on-one-notes/</link><pubDate>Wed, 04 Nov 2020 09:10:38 +0000</pubDate><guid>http://claudio-ortolina.org/posts/one-on-one-notes/</guid><description>
+&lt;p>
+In the last two years I&amp;#39;ve done hundreds of remote 1-on-1 meetings, both
+as a contributor talking to my manager(s) and as a manager talking to
+people in my team.&lt;/p>
+&lt;p>
+As a manager, I consider 1-on-1 meetings the most important
+responsibility I have: empowering other people to do their best work can
+greatly outmeasure any contribution I can give on my own.&lt;/p>
+&lt;p>
+What follows is some notes on what seems to work for me. It does not
+represent by any means a proper research on the matter, so please take
+it with a grain of salt.&lt;/p>
+&lt;div id="outline-container-long-term-objectives" class="outline-3">
+&lt;h3 id="long-term-objectives">
+Long term objectives
+&lt;/h3>
+&lt;div id="outline-text-long-term-objectives" class="outline-text-3">
+&lt;p>
+Regular 1-on-1 meetings can certainly be used to solve immediate,
+short-term blockers or clarify some questions, but the long term
+objective is building a working professional relationship where:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>Both parties can safely be vulnerable and address deep issues that
+make day to day work more difficult. This can be anything from anxiety
+about the world at large, to having to homeschool kids, to
+difficulties in multitasking different responsibilities. Note that as
+a manager, you&amp;#39;re allowed to show that you&amp;#39;re struggling to the other
+person. We&amp;#39;re human after all and that helps building transparent
+relationships. Needless to say, confidentiality and respect are
+paramount.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Trust takes time and effort. It may take months before people open up
+and start addressing important topics: what motivates them, problems
+they see in the team and in the company, their own aspirations and
+ultimately work on their professional growth.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Lead by example: if you ask a complex question (e.g. what do you wanna
+focus on this year?), answer it yourself first, so that they
+understand better.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Always prepare something to talk about: even if it seems artificial,
+it will gradually tune your perception to be on the lookout between
+meetings for topics to talk about and it will get easier. At the same
+time, if the other party doesn&amp;#39;t provide topics over multiple
+meetings, make sure you address that. There&amp;#39;s always something to talk
+about.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-preparation" class="outline-3">
+&lt;h3 id="preparation">
+Preparation
+&lt;/h3>
+&lt;div id="outline-text-preparation" class="outline-text-3">
+&lt;p>
+Regular 1-on-1 meetings require preparation: the easiest thing to do to
+ease preparation is to keep an agenda document shared between the two
+participants.&lt;/p>
+&lt;p>
+I can recommend a shared Google Doc, with sections titled by date and
+sorted in reverse chronological order (most recent first).&lt;/p>
+&lt;p>
+This way you can:&lt;/p>
+&lt;ol>
+&lt;li>
+&lt;p>Predictably add topics to discuss between meetings (it&amp;#39;s always at
+the top).&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Have implicit time tracking, i.e. you know when something was
+discussed.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Easily collaborate in real time during the meeting to capture ideas
+in a form that correctly reflects the other person&amp;#39;s thoughts.&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;p>This system is by no means perfect (especially if you end up having
+dozens of these documents), but it&amp;#39;s flexible enough that you can adapt
+it to individual preferences. For example, I find that with some people
+we can use the agenda to discuss topic asynchronously in writing
+beforehand (and draw some conclusions in the meeting), while with other
+we defer discussion to the meeting itself. With other ones, we end up
+adding topics during the meeting as the conversation naturally goes in
+different directions.&lt;/p>
+&lt;p>
+In addition, it&amp;#39;s important to prepare for the conversation, even for
+just 5-10 minutes before the meeting. Having such time buffer not only
+helps clarifying thoughts beforehand, but also gives you an opportunity
+to stop thinking about what you were doing before and what you&amp;#39;re gonna
+be doing after the meeting.&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-during-the-meeting" class="outline-3">
+&lt;h3 id="during-the-meeting">
+During the meeting
+&lt;/h3>
+&lt;div id="outline-text-during-the-meeting" class="outline-text-3">
+&lt;ol>
+&lt;li>
+&lt;p>Respect the agenda as much as you can, making sure that you either
+address all points on it or explicitly say &amp;#34;We&amp;#39;ll need to address
+this in a separate call. Can it wait our next planned session or do
+you wanna schedule an earlier follow-up?&amp;#34;.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>If the conversation drifts to a completely different direction and
+time is running tight, make sure both parties are happy to discuss
+that direction at the expense of other topics. You always have the
+option to capture the new topic and address it at a later stage.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Be at ease in saying &amp;#34;I don&amp;#39;t know, but here&amp;#39;s how I plan to find
+out and here&amp;#39;s when I&amp;#39;m gonna report back about it&amp;#34;. At the end of
+the day, trust is built on transparency and predictability.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>When the other person explains something to you and you wanna make
+sure you got it right, repeat it back and ask for confirmation. By
+doing that, you both check your understanding and implicitly ask the
+other person to check their own explanation. I&amp;#39;ve used this
+technique in all sorts of other conversations in my professional and
+personal life and it does absolute wonders in clarifying
+expectations on both sides.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>If you take notes, learn how to do that quickly by using keywords,
+then fill in the blanks later (and ask for confirmation to the other
+person once done). Writing can break the flow of the conversation,
+so it needs to be done carefully in order to minimize its impact.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>If a conversation topic implies someone taking an action, explicitly
+state that in the form of &amp;#34;I will&amp;#34; or &amp;#34;You will&amp;#34; or &amp;#34;Someone else
+will&amp;#34;, with an indication of when that would happen.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>If the meeting resulted in some actions, recap them at the end of
+the call.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Video conversations have a different pace - let people speak, listen
+carefully, slow down, repeat a few times if needed.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Explicitly ask the other person if they think a topic has been
+exhausted before moving on.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Respectfully ask the other person how they&amp;#39;re doing, leaving them
+space to decide what they can comfortably share with you. Do no pry
+and always qualify your questions with the reason why you&amp;#39;re asking
+them. For example, I&amp;#39;ve been recently asking people how they&amp;#39;re
+dealing with the COVID-19 pandemic, because I noticed erratic
+working patterns that suggest they may be working too much (for many
+people, work is much simpler to deal with, so they end up using it
+as a safe haven - I&amp;#39;m not a psychologist though so this is another
+thing to take with a grain of salt).&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Provide context: while this is important in any company, I believe it&amp;#39;s fundamental
+in a remote company because people have more limited opportunities to gather
+context by casually taking part to unscheduled conversations. So if I&amp;#39;m
+discussing a specific project that I think it&amp;#39;s connected to other projects,
+I&amp;#39;ll share that. More often than not, the person on the other end will
+appreciate the additional information and will make good use of it.&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-after-the-meeting" class="outline-3">
+&lt;h3 id="after-the-meeting">
+After the meeting
+&lt;/h3>
+&lt;div id="outline-text-after-the-meeting" class="outline-text-3">
+&lt;p>
+If you have any action, just do it as early as possible. Your ability to
+follow up is by far the most important factor in building trust. If the
+other person asks you to do something, you agree to it and you don&amp;#39;t,
+they will not ask you again.&lt;/p>
+&lt;p>
+If at any point you realize you didn&amp;#39;t do something you promised to do,
+acknowledge your shortcoming, apologize and make up for it. It happens,
+and if you&amp;#39;re transparent about it usually the other person will
+understand.&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-topics" class="outline-3">
+&lt;h3 id="topics">
+Topics
+&lt;/h3>
+&lt;div id="outline-text-topics" class="outline-text-3">
+&lt;p>
+1-on-1 meetings are structured around the people involved: while you can
+definitely start from some guideline questions, they should over time
+develop into a unique conversation.&lt;/p>
+&lt;p>
+That said, over the course of multiple meetings you should aim at:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>Unblocking specific issue related to current streams of work,
+e.g. &amp;#34;I&amp;#39;m undecided on how to build X, if using this or that.&amp;#34;&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Clarify responsibilities, e.g. &amp;#34;Yes, you need to take care of X, while
+Alice can take care of Y.&amp;#34;&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Provide feedback on work done, e.g. &amp;#34;I really liked how you did X
+because…&amp;#34; or &amp;#34;I&amp;#39;d like to speak about Y, as there&amp;#39;s an opportunity
+to improve Z.&amp;#34;&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Useful things to learn about, e.g. &amp;#34;As you&amp;#39;re working on X, you might
+enjoy learning about Y.&amp;#34;&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Connect the dots with other projects, e.g. &amp;#34;As you&amp;#39;re working on X,
+you might be interested to speak to Alice, as she&amp;#39;s working on Y,
+which is related to X as…&amp;#34;&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Happiness, satisfaction, and future work e.g. &amp;#34;If we look at the
+roadmap, there&amp;#39;s X, Y, Z. Do they interest you? Which one would be
+your initial preference to work on?&amp;#34;&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;p>One important aspect is balance: too often 1-on-1 meetings are focused on the
+day to day work and don&amp;#39;t cover the larger picture. This is why there should be
+scheduled Feedback Sessions where you go through some meta-questions that allow
+expanding scope.&lt;/p>
+&lt;p>
+These are some examples of questions useful for those sessions:&lt;/p>
+&lt;ol>
+&lt;li>
+&lt;p>Are you happy about the work you&amp;#39;re doing? Is it satisfactory?&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Looking at X time period, can you point out a piece of your work you&amp;#39;re proud of?&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Looking at the same time period, can you point out 3 team
+achievements you&amp;#39;re proud of?&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>What should the team focus on in this quarter?&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>If you had a magic wand and could instantly change anything in the
+team, what would that be?&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;p>In general, Feedback Sessions are an opportunity to look at the larger picture
+and think about the future. For more inspiration, you can consult the &lt;a href="https://help.small-improvements.com/article/264-24-questions-to-ask-in-your-next-11-meeting">Small
+Improvements guide to 1-on-1 meetings&lt;/a>.&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-conclusions" class="outline-3">
+&lt;h3 id="conclusions">
+Conclusions
+&lt;/h3>
+&lt;div id="outline-text-conclusions" class="outline-text-3">
+&lt;p>
+As mentioned before, this is by no means an exhaustive guide, but a collection
+on thoughts based on my experience. At the end of the day, if you always focus
+on listening to the other person and acting swiftly on their feedback, you will
+get good results.&lt;/p>
+&lt;/div>
+&lt;/div></description></item><item><title>A Short Profiling Story</title><link>http://claudio-ortolina.org/posts/a-short-profiling-story/</link><pubDate>Tue, 03 Nov 2020 11:42:42 +0000</pubDate><guid>http://claudio-ortolina.org/posts/a-short-profiling-story/</guid><description>
+&lt;p>
+While transcribing
+&lt;a href="https://www.elixirconf.eu/talks/The-Perils-of-Large-Files/">the talk I
+gave at the last ElixirConf.eu&lt;/a> conference, one of my colleagues
+pointed out that I glossed over the details of one of the examples. This
+prompted me to do some digging and I want to share what I found.&lt;/p>
+&lt;div id="outline-container-the-problem" class="outline-3">
+&lt;h3 id="the-problem">
+The problem
+&lt;/h3>
+&lt;div id="outline-text-the-problem" class="outline-text-3">
+&lt;p>
+The example in question is a module responsible to fetch a file from a
+remote source and write it at the specified path.&lt;/p>
+&lt;p>
+The implementation is very simplistic and lacks both error handling and
+retry logic.&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir"> &lt;span style="color:#66d9ef">defmodule&lt;/span> &lt;span style="color:#a6e22e">Perils.Examples.Store&lt;/span> &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#66d9ef">def&lt;/span> write(file_name, url) &lt;span style="color:#66d9ef">do&lt;/span>
+with {&lt;span style="color:#e6db74">:ok&lt;/span>, data} &lt;span style="color:#f92672">&amp;lt;-&lt;/span> get(url) &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#a6e22e">File&lt;/span>&lt;span style="color:#f92672">.&lt;/span>write!(file_name, data)
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">defp&lt;/span> get(url) &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#e6db74">:httpc&lt;/span>&lt;span style="color:#f92672">.&lt;/span>request(&lt;span style="color:#e6db74">:get&lt;/span>, {&lt;span style="color:#a6e22e">String&lt;/span>&lt;span style="color:#f92672">.&lt;/span>to_charlist(url), []}, [], [])
+&lt;span style="color:#f92672">|&amp;gt;&lt;/span> &lt;span style="color:#66d9ef">case&lt;/span> &lt;span style="color:#66d9ef">do&lt;/span>
+{&lt;span style="color:#e6db74">:ok&lt;/span>, result} &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+{{_, &lt;span style="color:#ae81ff">200&lt;/span>, _}, _headers, body} &lt;span style="color:#f92672">=&lt;/span> result
+{&lt;span style="color:#e6db74">:ok&lt;/span>, body}
+error &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+error
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+Looking at the code, we can see that it relies on &lt;code class="verbatim">:httpc&lt;/code>, the http
+client that ships with Erlang/OTP.&lt;/p>
+&lt;p>
+Both in my talk and in the initial transcription draft, I pointed out
+that running this code with a 12MB file would result in a memory usage
+peak at around 350/375MB, but didn&amp;#39;t really look into why.&lt;/p>
+&lt;p>
+&lt;img src="http://claudio-ortolina.org/img/a-short-profiling-story/before.png" alt="A chart visualizing a 350MB memory spike" class="left" />
+&lt;/p>
+&lt;p>
+Such delta between the file size and peak memory usage is suspicious and
+worth investigating.&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-the-investigation" class="outline-3">
+&lt;h3 id="the-investigation">
+The investigation
+&lt;/h3>
+&lt;div id="outline-text-the-investigation" class="outline-text-3">
+&lt;p>
+I started by setting up an &lt;a href="https://github.com/parroty/exprof">exprof&lt;/a>
+test, so that I could profile resource usage associated with the
+problematic function.&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir"> &lt;span style="color:#66d9ef">defmodule&lt;/span> &lt;span style="color:#a6e22e">A&lt;/span> &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#f92672">import&lt;/span> &lt;span style="color:#a6e22e">ExProf.Macro&lt;/span>
+&lt;span style="color:#66d9ef">def&lt;/span> run(url) &lt;span style="color:#66d9ef">do&lt;/span>
+profile &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#a6e22e">Perils.Examples.Store&lt;/span>&lt;span style="color:#f92672">.&lt;/span>write(&lt;span style="color:#e6db74">&amp;#34;magazine.pdf&amp;#34;&lt;/span>, url)
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>
+url &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#e6db74">&amp;#34;https://web-examples.pspdfkit.com/magazine/example.pdf&amp;#34;&lt;/span> &lt;span style="color:#75715e">#12MB&lt;/span>
+{records, _block_result} &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#a6e22e">A&lt;/span>&lt;span style="color:#f92672">.&lt;/span>run(url)
+total_percent &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#a6e22e">Enum&lt;/span>&lt;span style="color:#f92672">.&lt;/span>reduce(records, &lt;span style="color:#ae81ff">0.0&lt;/span>, &lt;span style="color:#f92672">&amp;amp;&lt;/span>(&amp;amp;1&lt;span style="color:#f92672">.&lt;/span>percent &lt;span style="color:#f92672">+&lt;/span> &amp;amp;2))
+&lt;span style="color:#a6e22e">IO&lt;/span>&lt;span style="color:#f92672">.&lt;/span>inspect(&lt;span style="color:#e6db74">&amp;#34;total = &lt;/span>&lt;span style="color:#e6db74">#{&lt;/span>total_percent&lt;span style="color:#e6db74">}&lt;/span>&lt;span style="color:#e6db74">&amp;#34;&lt;/span>)&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+The result (with some lines omitted) shows that most of the time
+(51.74%) is spent converting the binary response body to a list inside
+the &lt;code class="verbatim">maybe_format_body/2&lt;/code> function:&lt;/p>
+&lt;pre class="example">
+FUNCTION CALLS % TIME [uS / CALLS]
+-------- ----- ------- ---- [----------]
+&amp;lt;omitted&amp;gt;
+erlang:iolist_to_binary/1 1 20.46 49705 [ 49705.00]
+erlang:binary_to_list/1 1 27.54 66887 [ 66887.00]
+httpc:maybe_format_body/2 1 51.74 125664 [ 125664.00]
+&lt;/pre>
+&lt;p>
+While this is not an indication of higher memory usage per se, it&amp;#39;s a
+good lead: binary to list conversion can be memory intensive.&lt;/p>
+&lt;p>
+I then looked at the
+&lt;a href="https://github.com/erlang/otp/blob/3f21ce1e6a5d6c548867fa4bc9a8c666c626ade1/lib/inets/src/http_client/httpc.erl#L655-L661">source
+for &lt;code class="verbatim">maybe_format_body/2&lt;/code>&lt;/a>, making sure to match on the OTP version I
+tested against (23.1.1).&lt;/p>
+&lt;div class="src src-erlang">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-erlang" data-lang="erlang"> maybe_format_body(BinBody, Options) &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+&lt;span style="color:#66d9ef">case&lt;/span> proplists:&lt;span style="color:#a6e22e">get_value&lt;/span>(body_format, Options, string) &lt;span style="color:#66d9ef">of&lt;/span>
+string &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+binary_to_list(BinBody);
+_ &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+BinBody
+&lt;span style="color:#66d9ef">end&lt;/span>.&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+As expected, the function uses &lt;code class="verbatim">binary_to_list/1&lt;/code> to transform the
+response binary body into a list. Luckily, this behaviour can be tweaked
+via the &lt;code class="verbatim">body_format&lt;/code> option, which defaults to &lt;code class="verbatim">string&lt;/code> (as in Erlang
+string, which maps to a character list in Elixir).&lt;/p>
+&lt;p>
+Searching for &lt;code class="verbatim">body_format&lt;/code> in
+&lt;a href="http://erlang.org/doc/man/httpc.html#request-5">the Erlang docs for
+&lt;code class="verbatim">request/5&lt;/code>&lt;/a> shows that indeed it&amp;#39;s possible to tweak our problematic
+implementation to:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir"> &lt;span style="color:#e6db74">:httpc&lt;/span>&lt;span style="color:#f92672">.&lt;/span>request(&lt;span style="color:#e6db74">:get&lt;/span>, {&lt;span style="color:#a6e22e">String&lt;/span>&lt;span style="color:#f92672">.&lt;/span>to_charlist(url), []}, [], &lt;span style="color:#e6db74">body_format&lt;/span>: &lt;span style="color:#e6db74">:binary&lt;/span>)&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+With this change, memory usage decreases dramatically, showing a delta
+only slightly larger than the file size.&lt;/p>
+&lt;p>
+&lt;img src="http://claudio-ortolina.org/img/a-short-profiling-story/after.png" alt="A chart visualizing a 15MB memory spike" class="left" />
+&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-conclusion" class="outline-3">
+&lt;h3 id="conclusion">
+Conclusion
+&lt;/h3>
+&lt;div id="outline-text-conclusion" class="outline-text-3">
+&lt;p>
+This whole investigation got me thinking, as the &lt;code class="verbatim">body_format&lt;/code> option
+had been in the docs all along, yet I hadn&amp;#39;t seen it. I can find three
+reasons:&lt;/p>
+&lt;ol>
+&lt;li>
+&lt;p>The overall logic in the example doesn&amp;#39;t really care about the
+response body contents, as it just writes them to a file. Without
+seeing that response, there was no way for me to even notice its
+type.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code class="verbatim">File.write/2&lt;/code> accepts binaries, strings and character lists - again
+I didn&amp;#39;t have a reason to even wonder about the type used to
+represent that returned response body.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Working primarily in Elixir, everything tends to be either a string
+or a binary. I just &amp;#34;forget&amp;#34; that character lists exist, which lead
+to the implicit assumption that this would be the default for
+&lt;code class="verbatim">:httpc&lt;/code>.&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;p>In other words, I didn&amp;#39;t know what to search in the docs. Profiling
+tools helped me understand the problem space and pointed me in the right
+direction.&lt;/p>
+&lt;/div>
+&lt;/div></description></item><item><title>About</title><link>http://claudio-ortolina.org/about/</link><pubDate>Tue, 03 Nov 2020 00:00:00 +0000</pubDate><guid>http://claudio-ortolina.org/about/</guid><description>
+&lt;h1 id="hello">Hello!&lt;/h1>
+&lt;p>I&amp;rsquo;m Claudio Ortolina and this is my website, an old-fashioned blog where I post about whatever I want.&lt;/p>
+&lt;p>I currently work as a software engineer at PSPDFKit GmbH.&lt;/p>
+&lt;p>If you run out of TV series to binge, you can watch any of my talks at &lt;a href="http://claudio-ortolina.org/talks/" title="Talks">Talks&lt;/a>.&lt;/p>
+&lt;p>You can contact me at &lt;a href="mailto:cloud8421@gmail.com">cloud8421@gmail.com&lt;/a>.&lt;/p></description></item><item><title>Talks</title><link>http://claudio-ortolina.org/talks/</link><pubDate>Tue, 03 Nov 2020 00:00:00 +0000</pubDate><guid>http://claudio-ortolina.org/talks/</guid><description>
+&lt;h1 id="talks">Talks&lt;/h1>
+&lt;p>This is a collection of conference talks I&amp;rsquo;ve given over time in reverse chronological order, along with their original abstracts.&lt;/p>
+&lt;h2 id="taming-side-effects-code-beam-sto-2019">Taming side effects (Code BEAM STO 2019)&lt;/h2>
+&lt;p>The systems we build every day have side effects: save data, send emails, write logs, push metrics, you name it! Many errors and headaches come from the difficulties involved in working and testing such code.&lt;/p>
+&lt;p>In this talk we&amp;rsquo;ll look at a simple approach on how to write logic that is side-effects rich to make easier to maintain and test, no matter if we are interacting with databases, external apis or any other type of service.&lt;/p>
+&lt;div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+&lt;iframe src="https://www.youtube.com/embed/Pu8v2o9L5EI" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" allowfullscreen title="YouTube Video">&lt;/iframe>
+&lt;/div>
+&lt;h2 id="flexible-elixir-code-beam-sf-2017">Flexible Elixir (Code BEAM SF 2017)&lt;/h2>
+&lt;p>Writing idiomatic, efficient, and maintainable Elixir code requires approaching problems in a different way than other languages.&lt;/p>
+&lt;p>In this talk, we’ll be guided by examples and learn how to construct everyday tasks, combining the expressiveness of Elixir with the strong foundations of Erlang and the BEAM vm.&lt;/p>
+&lt;div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+&lt;iframe src="https://www.youtube.com/embed/D3IftRUQgqc" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" allowfullscreen title="YouTube Video">&lt;/iframe>
+&lt;/div>
+&lt;h2 id="always-available-elixirconf-eu-2017">Always available (ElixirConf EU 2017)&lt;/h2>
+&lt;p>Availability should be one of our major concerns when writing web applications, yet more often than not we ship code that is simply not resilient enough.&lt;/p>
+&lt;p>Elixir and OTP provide powerful tools to improve resilience and increase availability: in this talk we&amp;rsquo;ll look at how we can leverage them to provide continuous service even when our database is down. The talk will be a walkthrough of a refactor of an Elixir application with a Phoenix frontend, powered by PostgreSQL.&lt;/p>
+&lt;div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+&lt;iframe src="https://www.youtube.com/embed/UTXYiV7nOpM" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" allowfullscreen title="YouTube Video">&lt;/iframe>
+&lt;/div>
+&lt;h2 id="back-on-your-feet-elixirconf-us-2017">Back on your Feet (ElixirConf US 2017)&lt;/h2>
+&lt;p>When writing resilient Elixir applications one of our major concerns is state: where do we store it, what happens to it when a process crashes, how do we efficiently recreate it.&lt;/p>
+&lt;p>In this talk, we&amp;rsquo;ll look at an example application and apply different techniques that can be used to protect and recover state, each one with specific implications and tradeoffs.&lt;/p>
+&lt;div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+&lt;iframe src="https://www.youtube.com/embed/kWYgrA2YshE" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" allowfullscreen title="YouTube Video">&lt;/iframe>
+&lt;/div>
+&lt;h2 id="genstage-by-example-øredev-2017">GenStage by Example (Øredev 2017)&lt;/h2>
+&lt;p>In this talk we’ll look at GenStage, an Elixir library to structure demand-driven data flows.&lt;/p>
+&lt;p>The talk will be example-driven: we’ll start with a data-pipeline application written without GenStage and put it under heavy load. By doing that, we’ll have a first-hand account of the issues that GenStage aims to solve.&lt;/p>
+&lt;p>We’ll then look a revised implementation of the same data pipeline that uses GenStage to see how it solves the issues found in the original version of our application.&lt;/p>
+&lt;div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+&lt;iframe src="https://www.youtube.com/embed/Y_JiVW7npuQ" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" allowfullscreen title="YouTube Video">&lt;/iframe>
+&lt;/div>
+&lt;h2 id="practical-elixir-flow-øredev-2017">Practical Elixir Flow (Øredev 2017)&lt;/h2>
+&lt;p>In this session we’ll see how to implement a data transformation pipeline with Elixir GenStage and Flow.&lt;/p>
+&lt;p>We will process a infinite stream of data, performing aggregations over specific metrics.&lt;/p>
+&lt;p>As we dive deeper, we&amp;rsquo;ll also look at how to recover and manage failures and errors.&lt;/p>
+&lt;div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+&lt;iframe src="https://www.youtube.com/embed/F2fefDJfdRY" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" allowfullscreen title="YouTube Video">&lt;/iframe>
+&lt;/div>
+&lt;h2 id="idiomatic-elixir-bristech-2016">Idiomatic Elixir (Bristech 2016)&lt;/h2>
+&lt;p>Elixir is growing in popularity day by day. Many developers are approaching it with prior patterns and knowledge, building software that works but that doesn’t leverage many features of Erlang and its BEAM runtime. In this talk we’ll go through some examples and learn how to write great Elixir code.&lt;/p>
+&lt;div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+&lt;iframe src="https://www.youtube.com/embed/a-8u6g8Wbf8" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" allowfullscreen title="YouTube Video">&lt;/iframe>
+&lt;/div>
+&lt;h2 id="genstage-in-the-kitchen-elixirldn-2016">GenStage in the Kitchen (Elixir.LDN 2016)&lt;/h2>
+&lt;p>GenStage is the Elixir core team’s effort to provide a set of flexible, composable primitives for concurrent, demand-driven event processing.&lt;/p>
+&lt;p>Our use case is a restaurant simulation, with tables placing orders, a waiter, a chef and line cooks ready to prepare amazing dishes.
+We’ll map GenStage’s core concepts to constraints in our restaurant simulation and see how our system copes by stressing its different components, isolating some useful principles along the way.&lt;/p>
+&lt;div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+&lt;iframe src="https://www.youtube.com/embed/M78r_PDlw2c" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" allowfullscreen title="YouTube Video">&lt;/iframe>
+&lt;/div>
+&lt;h2 id="rewriting-a-ruby-application-in-elixir-elixirconf-eu-2015">Rewriting a Ruby application in Elixir (ElixirConf EU 2015)&lt;/h2>
+&lt;p>Dragonfly is a fairly popular Ruby library to manage file uploads and it includes a Rack server to serve those files back. This talk is a postmortem of a rewrite of this server component in Elixir, so that it can be used to process Dragonfly-compatible urls with improved performance.&lt;/p>
+&lt;p>The talk will focus on the structure of the application, managing pools of workers, pattern matching to simplify complex Ruby logic, interacting with external tools (like streaming data back and forth from Imagemagick) and deployment considerations.&lt;/p>
+&lt;div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+&lt;iframe src="https://www.youtube.com/embed/lho1e04Gzzs" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" allowfullscreen title="YouTube Video">&lt;/iframe>
+&lt;/div></description></item></channel></rss>

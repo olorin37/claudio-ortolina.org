@@ -1,3 +1,223 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>software development on Claudio Ortolina</title><link>http://claudio-ortolina.org/tags/software-development/</link><description>Recent content in software development on Claudio Ortolina</description><generator>Hugo -- gohugo.io</generator><language>en-gb</language><copyright>Copyright 2020 © Claudio Ortolina</copyright><lastBuildDate>Tue, 10 Nov 2020 08:41:30 +0000</lastBuildDate><atom:link href="http://claudio-ortolina.org/tags/software-development/index.xml" rel="self" type="application/rss+xml"/><item><title>Using Finch With Sentry</title><link>http://claudio-ortolina.org/posts/using-finch-with-sentry/</link><pubDate>Tue, 10 Nov 2020 08:41:30 +0000</pubDate><guid>http://claudio-ortolina.org/posts/using-finch-with-sentry/</guid><description>
-How to setup Sentry to use the Finch HTTP Client</description></item><item><title>A Short Profiling Story</title><link>http://claudio-ortolina.org/posts/a-short-profiling-story/</link><pubDate>Tue, 03 Nov 2020 11:42:42 +0000</pubDate><guid>http://claudio-ortolina.org/posts/a-short-profiling-story/</guid><description>
-Using profiling tools to understand and debug memory usage</description></item></channel></rss>
+&lt;p>
+A few weeks ago I added enabled support for &lt;a href="https://sentry.io">Sentry&lt;/a> inside &lt;a href="https://github.com/fully-forged/tune">Tune&lt;/a>, my Spotify browser/client. Even if I&amp;#39;m pretty much the only user (I built it for myself after all), having exception tracking has already proved to be useful - band and song names can really create all sorts of issues.&lt;/p>
+&lt;p>
+The &lt;a href="https://hex.pm/packages/sentry">official Sentry package&lt;/a> works as advertised and by default it communicates using &lt;a href="https://hex.pm/packages/hackney">Hackney&lt;/a> as a http client. As I&amp;#39;ve been using &lt;a href="https://hex.pm/packages/finch">Finch&lt;/a> in the project, I was pleased to see that Sentry exposed a &lt;code>client&lt;/code> configuration option that allowed using your own module, as long as it implemented the &lt;code>Sentry.HTTPClient&lt;/code> behaviour.&lt;/p>
+&lt;p>
+The advantage in swapping the http client library (on top of uniforming the building blocks of the application) is that Finch has support for &lt;a href="https://hex.pm/packages/telemetry">Telemetry&lt;/a> metrics.&lt;/p>
+&lt;blockquote>
+&lt;p>Update #1: Thanks to Wojtek Mach for &lt;a href="https://github.com/fully-forged/tune/pull/131">a more streamlined implementation.&lt;/a>&lt;/p>
+&lt;/blockquote>
+&lt;p>
+The module I wrote is quite short:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir">&lt;span style="color:#66d9ef">defmodule&lt;/span> &lt;span style="color:#a6e22e">Sentry.FinchClient&lt;/span> &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#a6e22e">@moduledoc&lt;/span> &lt;span style="color:#e6db74">&amp;#34;&amp;#34;&amp;#34;
+&lt;/span>&lt;span style="color:#e6db74"> Defines a small shim to use `Finch` as a `Sentry.HTTPClient`.
+&lt;/span>&lt;span style="color:#e6db74"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;span style="color:#a6e22e">@behaviour&lt;/span> &lt;span style="color:#a6e22e">Sentry.HTTPClient&lt;/span>
+&lt;span style="color:#a6e22e">@impl&lt;/span> &lt;span style="color:#66d9ef">true&lt;/span>
+&lt;span style="color:#66d9ef">def&lt;/span> child_spec &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#a6e22e">Finch&lt;/span>&lt;span style="color:#f92672">.&lt;/span>child_spec(&lt;span style="color:#e6db74">name&lt;/span>: &lt;span style="color:#a6e22e">Sentry.Finch&lt;/span>)
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#a6e22e">@impl&lt;/span> &lt;span style="color:#66d9ef">true&lt;/span>
+&lt;span style="color:#66d9ef">def&lt;/span> post(url, headers, body) &lt;span style="color:#66d9ef">do&lt;/span>
+request &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#a6e22e">Finch&lt;/span>&lt;span style="color:#f92672">.&lt;/span>build(&lt;span style="color:#e6db74">:post&lt;/span>, url, headers, body)
+&lt;span style="color:#66d9ef">case&lt;/span> &lt;span style="color:#a6e22e">Finch&lt;/span>&lt;span style="color:#f92672">.&lt;/span>request(request, &lt;span style="color:#a6e22e">Sentry.Finch&lt;/span>) &lt;span style="color:#66d9ef">do&lt;/span>
+{&lt;span style="color:#e6db74">:ok&lt;/span>, response} &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+{&lt;span style="color:#e6db74">:ok&lt;/span>, response&lt;span style="color:#f92672">.&lt;/span>status, response&lt;span style="color:#f92672">.&lt;/span>headers, response&lt;span style="color:#f92672">.&lt;/span>body}
+error &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+error
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+The trickiest bit was to get the &lt;code>child_spec/0&lt;/code> callback right while keeping &lt;a href="https://erlang.org/doc/man/dialyzer.html">dialyzer&lt;/a> happy. The first implementation I wrote was simply &lt;code>{Finch, name: Sentry.Finch}&lt;/code>, but that would fail to satisfy &lt;a href="https://hexdocs.pm/sentry/Sentry.HTTPClient.html#c:child_spec/0">the typespec defined for &lt;code>child_spec/0&lt;/code>&lt;/a>. I then switched to a more verbose version:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir"> &lt;span style="color:#66d9ef">def&lt;/span> child_spec &lt;span style="color:#66d9ef">do&lt;/span>
+opts &lt;span style="color:#f92672">=&lt;/span> [&lt;span style="color:#e6db74">name&lt;/span>: &lt;span style="color:#a6e22e">Sentry.Finch&lt;/span>]
+&lt;span style="color:#a6e22e">Supervisor&lt;/span>&lt;span style="color:#f92672">.&lt;/span>child_spec(
+%{
+&lt;span style="color:#e6db74">id&lt;/span>: __MODULE__,
+&lt;span style="color:#e6db74">start&lt;/span>: {&lt;span style="color:#a6e22e">Finch&lt;/span>, &lt;span style="color:#e6db74">:start_link&lt;/span>, [opts]},
+&lt;span style="color:#e6db74">type&lt;/span>: &lt;span style="color:#e6db74">:supervisor&lt;/span>
+},
+[]
+)
+&lt;span style="color:#66d9ef">end&lt;/span>&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+This version satisfied dialyzer, but turns out there&amp;#39;s a simpler way. After publishing this blog post, Wojtek Mach reached out and submitted a PR to streamline the specification to the version shown in the full example above.&lt;/p>
+&lt;p>
+I also updated my production configuration:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir">config &lt;span style="color:#e6db74">:sentry&lt;/span>,
+&lt;span style="color:#e6db74">dsn&lt;/span>: {&lt;span style="color:#e6db74">:system&lt;/span>, &lt;span style="color:#e6db74">&amp;#34;SENTRY_DSN&amp;#34;&lt;/span>},
+&lt;span style="color:#e6db74">environment_name&lt;/span>: &lt;span style="color:#e6db74">:prod&lt;/span>,
+&lt;span style="color:#e6db74">enable_source_code_context&lt;/span>: &lt;span style="color:#66d9ef">true&lt;/span>,
+&lt;span style="color:#e6db74">root_source_code_path&lt;/span>: &lt;span style="color:#a6e22e">File&lt;/span>&lt;span style="color:#f92672">.&lt;/span>cwd!(),
+&lt;span style="color:#e6db74">client&lt;/span>: &lt;span style="color:#a6e22e">Sentry.FinchClient&lt;/span>,
+&lt;span style="color:#e6db74">included_environments&lt;/span>: [&lt;span style="color:#e6db74">:prod&lt;/span>]&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+You can of course expand on this implementation if you need to pass more options to the &lt;code>Finch&lt;/code> child specification - I found that for my use case, defaults are fine, so for now I don&amp;#39;t need to add any configuration hooks.&lt;/p>
+&lt;p>
+To see the change in context, &lt;a href="https://github.com/fully-forged/tune/pull/122">this is the original PR&lt;/a>, with the &lt;a href="https://github.com/fully-forged/tune/pull/131">follow-up by Wojtek Mach&lt;/a>.&lt;/p></description></item><item><title>A Short Profiling Story</title><link>http://claudio-ortolina.org/posts/a-short-profiling-story/</link><pubDate>Tue, 03 Nov 2020 11:42:42 +0000</pubDate><guid>http://claudio-ortolina.org/posts/a-short-profiling-story/</guid><description>
+&lt;p>
+While transcribing
+&lt;a href="https://www.elixirconf.eu/talks/The-Perils-of-Large-Files/">the talk I
+gave at the last ElixirConf.eu&lt;/a> conference, one of my colleagues
+pointed out that I glossed over the details of one of the examples. This
+prompted me to do some digging and I want to share what I found.&lt;/p>
+&lt;div id="outline-container-the-problem" class="outline-3">
+&lt;h3 id="the-problem">
+The problem
+&lt;/h3>
+&lt;div id="outline-text-the-problem" class="outline-text-3">
+&lt;p>
+The example in question is a module responsible to fetch a file from a
+remote source and write it at the specified path.&lt;/p>
+&lt;p>
+The implementation is very simplistic and lacks both error handling and
+retry logic.&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir"> &lt;span style="color:#66d9ef">defmodule&lt;/span> &lt;span style="color:#a6e22e">Perils.Examples.Store&lt;/span> &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#66d9ef">def&lt;/span> write(file_name, url) &lt;span style="color:#66d9ef">do&lt;/span>
+with {&lt;span style="color:#e6db74">:ok&lt;/span>, data} &lt;span style="color:#f92672">&amp;lt;-&lt;/span> get(url) &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#a6e22e">File&lt;/span>&lt;span style="color:#f92672">.&lt;/span>write!(file_name, data)
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">defp&lt;/span> get(url) &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#e6db74">:httpc&lt;/span>&lt;span style="color:#f92672">.&lt;/span>request(&lt;span style="color:#e6db74">:get&lt;/span>, {&lt;span style="color:#a6e22e">String&lt;/span>&lt;span style="color:#f92672">.&lt;/span>to_charlist(url), []}, [], [])
+&lt;span style="color:#f92672">|&amp;gt;&lt;/span> &lt;span style="color:#66d9ef">case&lt;/span> &lt;span style="color:#66d9ef">do&lt;/span>
+{&lt;span style="color:#e6db74">:ok&lt;/span>, result} &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+{{_, &lt;span style="color:#ae81ff">200&lt;/span>, _}, _headers, body} &lt;span style="color:#f92672">=&lt;/span> result
+{&lt;span style="color:#e6db74">:ok&lt;/span>, body}
+error &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+error
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+Looking at the code, we can see that it relies on &lt;code class="verbatim">:httpc&lt;/code>, the http
+client that ships with Erlang/OTP.&lt;/p>
+&lt;p>
+Both in my talk and in the initial transcription draft, I pointed out
+that running this code with a 12MB file would result in a memory usage
+peak at around 350/375MB, but didn&amp;#39;t really look into why.&lt;/p>
+&lt;p>
+&lt;img src="http://claudio-ortolina.org/img/a-short-profiling-story/before.png" alt="A chart visualizing a 350MB memory spike" class="left" />
+&lt;/p>
+&lt;p>
+Such delta between the file size and peak memory usage is suspicious and
+worth investigating.&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-the-investigation" class="outline-3">
+&lt;h3 id="the-investigation">
+The investigation
+&lt;/h3>
+&lt;div id="outline-text-the-investigation" class="outline-text-3">
+&lt;p>
+I started by setting up an &lt;a href="https://github.com/parroty/exprof">exprof&lt;/a>
+test, so that I could profile resource usage associated with the
+problematic function.&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir"> &lt;span style="color:#66d9ef">defmodule&lt;/span> &lt;span style="color:#a6e22e">A&lt;/span> &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#f92672">import&lt;/span> &lt;span style="color:#a6e22e">ExProf.Macro&lt;/span>
+&lt;span style="color:#66d9ef">def&lt;/span> run(url) &lt;span style="color:#66d9ef">do&lt;/span>
+profile &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#a6e22e">Perils.Examples.Store&lt;/span>&lt;span style="color:#f92672">.&lt;/span>write(&lt;span style="color:#e6db74">&amp;#34;magazine.pdf&amp;#34;&lt;/span>, url)
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>
+url &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#e6db74">&amp;#34;https://web-examples.pspdfkit.com/magazine/example.pdf&amp;#34;&lt;/span> &lt;span style="color:#75715e">#12MB&lt;/span>
+{records, _block_result} &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#a6e22e">A&lt;/span>&lt;span style="color:#f92672">.&lt;/span>run(url)
+total_percent &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#a6e22e">Enum&lt;/span>&lt;span style="color:#f92672">.&lt;/span>reduce(records, &lt;span style="color:#ae81ff">0.0&lt;/span>, &lt;span style="color:#f92672">&amp;amp;&lt;/span>(&amp;amp;1&lt;span style="color:#f92672">.&lt;/span>percent &lt;span style="color:#f92672">+&lt;/span> &amp;amp;2))
+&lt;span style="color:#a6e22e">IO&lt;/span>&lt;span style="color:#f92672">.&lt;/span>inspect(&lt;span style="color:#e6db74">&amp;#34;total = &lt;/span>&lt;span style="color:#e6db74">#{&lt;/span>total_percent&lt;span style="color:#e6db74">}&lt;/span>&lt;span style="color:#e6db74">&amp;#34;&lt;/span>)&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+The result (with some lines omitted) shows that most of the time
+(51.74%) is spent converting the binary response body to a list inside
+the &lt;code class="verbatim">maybe_format_body/2&lt;/code> function:&lt;/p>
+&lt;pre class="example">
+FUNCTION CALLS % TIME [uS / CALLS]
+-------- ----- ------- ---- [----------]
+&amp;lt;omitted&amp;gt;
+erlang:iolist_to_binary/1 1 20.46 49705 [ 49705.00]
+erlang:binary_to_list/1 1 27.54 66887 [ 66887.00]
+httpc:maybe_format_body/2 1 51.74 125664 [ 125664.00]
+&lt;/pre>
+&lt;p>
+While this is not an indication of higher memory usage per se, it&amp;#39;s a
+good lead: binary to list conversion can be memory intensive.&lt;/p>
+&lt;p>
+I then looked at the
+&lt;a href="https://github.com/erlang/otp/blob/3f21ce1e6a5d6c548867fa4bc9a8c666c626ade1/lib/inets/src/http_client/httpc.erl#L655-L661">source
+for &lt;code class="verbatim">maybe_format_body/2&lt;/code>&lt;/a>, making sure to match on the OTP version I
+tested against (23.1.1).&lt;/p>
+&lt;div class="src src-erlang">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-erlang" data-lang="erlang"> maybe_format_body(BinBody, Options) &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+&lt;span style="color:#66d9ef">case&lt;/span> proplists:&lt;span style="color:#a6e22e">get_value&lt;/span>(body_format, Options, string) &lt;span style="color:#66d9ef">of&lt;/span>
+string &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+binary_to_list(BinBody);
+_ &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+BinBody
+&lt;span style="color:#66d9ef">end&lt;/span>.&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+As expected, the function uses &lt;code class="verbatim">binary_to_list/1&lt;/code> to transform the
+response binary body into a list. Luckily, this behaviour can be tweaked
+via the &lt;code class="verbatim">body_format&lt;/code> option, which defaults to &lt;code class="verbatim">string&lt;/code> (as in Erlang
+string, which maps to a character list in Elixir).&lt;/p>
+&lt;p>
+Searching for &lt;code class="verbatim">body_format&lt;/code> in
+&lt;a href="http://erlang.org/doc/man/httpc.html#request-5">the Erlang docs for
+&lt;code class="verbatim">request/5&lt;/code>&lt;/a> shows that indeed it&amp;#39;s possible to tweak our problematic
+implementation to:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir"> &lt;span style="color:#e6db74">:httpc&lt;/span>&lt;span style="color:#f92672">.&lt;/span>request(&lt;span style="color:#e6db74">:get&lt;/span>, {&lt;span style="color:#a6e22e">String&lt;/span>&lt;span style="color:#f92672">.&lt;/span>to_charlist(url), []}, [], &lt;span style="color:#e6db74">body_format&lt;/span>: &lt;span style="color:#e6db74">:binary&lt;/span>)&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+With this change, memory usage decreases dramatically, showing a delta
+only slightly larger than the file size.&lt;/p>
+&lt;p>
+&lt;img src="http://claudio-ortolina.org/img/a-short-profiling-story/after.png" alt="A chart visualizing a 15MB memory spike" class="left" />
+&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-conclusion" class="outline-3">
+&lt;h3 id="conclusion">
+Conclusion
+&lt;/h3>
+&lt;div id="outline-text-conclusion" class="outline-text-3">
+&lt;p>
+This whole investigation got me thinking, as the &lt;code class="verbatim">body_format&lt;/code> option
+had been in the docs all along, yet I hadn&amp;#39;t seen it. I can find three
+reasons:&lt;/p>
+&lt;ol>
+&lt;li>
+&lt;p>The overall logic in the example doesn&amp;#39;t really care about the
+response body contents, as it just writes them to a file. Without
+seeing that response, there was no way for me to even notice its
+type.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code class="verbatim">File.write/2&lt;/code> accepts binaries, strings and character lists - again
+I didn&amp;#39;t have a reason to even wonder about the type used to
+represent that returned response body.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Working primarily in Elixir, everything tends to be either a string
+or a binary. I just &amp;#34;forget&amp;#34; that character lists exist, which lead
+to the implicit assumption that this would be the default for
+&lt;code class="verbatim">:httpc&lt;/code>.&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;p>In other words, I didn&amp;#39;t know what to search in the docs. Profiling
+tools helped me understand the problem space and pointed me in the right
+direction.&lt;/p>
+&lt;/div>
+&lt;/div></description></item></channel></rss>
