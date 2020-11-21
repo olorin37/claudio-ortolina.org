@@ -1,4 +1,366 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on Claudio Ortolina</title><link>http://claudio-ortolina.org/posts/</link><description>Recent content in Posts on Claudio Ortolina</description><generator>Hugo -- gohugo.io</generator><language>en-gb</language><copyright> &lt;p xmlns:dct="http://purl.org/dc/terms/" xmlns:cc="http://creativecommons.org/ns#" class="license-text">&lt;a rel="cc:attributionURL" property="dct:title" href="https://claudio-ortolina.org">This website&lt;/a> by &lt;a rel="cc:attributionURL dct:creator" property="cc:attributionName" href="https://claudio-ortolina.org">Claudio Ortolina&lt;/a> is licensed under &lt;a rel="license" href="https://creativecommons.org/licenses/by/4.0">CC BY 4.0&lt;/a>&lt;/p></copyright><lastBuildDate>Tue, 17 Nov 2020 17:27:05 +0000</lastBuildDate><atom:link href="http://claudio-ortolina.org/posts/index.xml" rel="self" type="application/rss+xml"/><item><title>Tips for Finch and Telemetry</title><link>http://claudio-ortolina.org/posts/tips-for-finch-and-telemetry/</link><pubDate>Tue, 17 Nov 2020 17:27:05 +0000</pubDate><guid>http://claudio-ortolina.org/posts/tips-for-finch-and-telemetry/</guid><description>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on Claudio Ortolina</title><link>http://claudio-ortolina.org/posts/</link><description>Recent content in Posts on Claudio Ortolina</description><generator>Hugo -- gohugo.io</generator><language>en-gb</language><copyright> &lt;p xmlns:dct="http://purl.org/dc/terms/" xmlns:cc="http://creativecommons.org/ns#" class="license-text">&lt;a rel="cc:attributionURL" property="dct:title" href="https://claudio-ortolina.org">This website&lt;/a> by &lt;a rel="cc:attributionURL dct:creator" property="cc:attributionName" href="https://claudio-ortolina.org">Claudio Ortolina&lt;/a> is licensed under &lt;a rel="license" href="https://creativecommons.org/licenses/by/4.0">CC BY 4.0&lt;/a>&lt;/p></copyright><lastBuildDate>Sat, 21 Nov 2020 09:29:01 +0000</lastBuildDate><atom:link href="http://claudio-ortolina.org/posts/index.xml" rel="self" type="application/rss+xml"/><item><title>Building a Custom Page for Phoenix Live Dashboard</title><link>http://claudio-ortolina.org/posts/building-a-custom-page-for-phoenix-live-dashboard/</link><pubDate>Sat, 21 Nov 2020 09:29:01 +0000</pubDate><guid>http://claudio-ortolina.org/posts/building-a-custom-page-for-phoenix-live-dashboard/</guid><description>
+&lt;p>
+One of the most interesting features provided by Phoenix Live Dashboard is the ability to &lt;a href="https://hexdocs.pm/phoenix_live_dashboard/Phoenix.LiveDashboard.PageBuilder.html#content">define your own pages&lt;/a>, so that you can quickly and reliably extend a Live Dashboard instance with sections that are tailored to your application domain.&lt;/p>
+&lt;p>
+While working on &lt;a href="https://github.com/fully-forged/tune">Tune&lt;/a>, I found a use case suitable for a custom live dashboard page: a debugging view where I can check open sessions and inspect the underlying processes.&lt;/p>
+&lt;div id="outline-container-headline-1" class="outline-2">
+&lt;h2 id="headline-1">
+On the use case
+&lt;/h2>
+&lt;div id="outline-text-headline-1" class="outline-text-2">
+&lt;p>
+I would encourage you to read &lt;a href="https://github.com/fully-forged/tune">Tune&amp;#39;s README&lt;/a> to understand the use case in more detail, but I&amp;#39;ll quote the relevant architectural section:&lt;/p>
+&lt;blockquote>
+&lt;p>Tune assumes multiple browser sessions for the same user, which is why it defines a &lt;a href="https://tune-docs.fullyforged.com/Tune.Spotify.Session.html#content">&lt;code>Tune.Spotify.Session&lt;/code>&lt;/a> behaviour with &lt;a href="https://tune-docs.fullyforged.com/Tune.Spotify.Session.HTTP.html#content">&lt;code>Tune.Spotify.Session.HTTP&lt;/code>&lt;/a> as its main runtime implementation.&lt;/p>
+&lt;p>
+Each worker is responsible to proxy interaction with the Spotify API, periodically poll for data changes, and broadcast corresponding events.&lt;/p>
+&lt;p>
+When a user opens a browser session, &lt;a href="https://tune-docs.fullyforged.com/TuneWeb.ExplorerLive.html#content">&lt;code>TuneWeb.ExplorerLive&lt;/code>&lt;/a> either starts or simply reuses a worker named with the same session ID.&lt;/p>
+&lt;p>
+Each worker monitors its subscribers, so that it can shutdown when a user closes their last browser window.&lt;/p>
+&lt;p>
+This architecture ensures that:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>The amount of automatic API calls against the Spotify API for a given user is constant and independent from the number of user sessions for the same user.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Credential renewal happens in the background&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>The explorer implementation remains entirely focused on UI interaction&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;/blockquote>
+&lt;p>
+In other words:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>For each Spotify account connected, there can only be one session (a &lt;code>Tune.Spotify.Session.HTTP&lt;/code> process named with the session ID).&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>For each session, there can be many open clients (i.e. browser windows or &lt;code>TuneWeb.ExplorerLive&lt;/code> process).&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-headline-2" class="outline-2">
+&lt;h2 id="headline-2">
+Requirements
+&lt;/h2>
+&lt;div id="outline-text-headline-2" class="outline-text-2">
+&lt;p>
+Our dashboard page will include:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>A table with session IDs, PIDs and count of open clients&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Ability to sort by session ID or clients count&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Search by session ID&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Support multiple nodes&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-headline-3" class="outline-2">
+&lt;h2 id="headline-3">
+Gathering the necessary data
+&lt;/h2>
+&lt;div id="outline-text-headline-3" class="outline-text-2">
+&lt;p>
+To populate the dashboard table, we first need to find a way to get a list of all active sessions, along with their clients count.&lt;/p>
+&lt;p>
+The simplest way is to leverage the fact that each &lt;code>Tune.Spotify.Session.HTTP&lt;/code> process is started with a name managed via a &lt;a href="https://hexdocs.pm/elixir/Registry.html">Registry&lt;/a>, with the session ID as a key. Registration is in place to guarantee that there can only be one session process with the same ID on each node.&lt;/p>
+&lt;p>
+We can use &lt;a href="https://hexdocs.pm/elixir/Registry.html#select/2">&lt;code>Registry.select/2&lt;/code>&lt;/a> to query the registry and receive back all session IDs and PIDs:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir">&lt;span style="color:#a6e22e">Registry&lt;/span>&lt;span style="color:#f92672">.&lt;/span>select(
+&lt;span style="color:#a6e22e">Tune.Spotify.SessionRegistry&lt;/span>,
+[{{&lt;span style="color:#e6db74">:&amp;#34;$1&amp;#34;&lt;/span>, &lt;span style="color:#e6db74">:&amp;#34;$2&amp;#34;&lt;/span>, &lt;span style="color:#e6db74">:_&lt;/span>}, [], [{{&lt;span style="color:#e6db74">:&amp;#34;$1&amp;#34;&lt;/span>, &lt;span style="color:#e6db74">:&amp;#34;$2&amp;#34;&lt;/span>}}]}]
+)&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+Which returns:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir">[{&lt;span style="color:#e6db74">&amp;#34;claudio.ortolina&amp;#34;&lt;/span>, &lt;span style="color:#75715e">#PID&amp;lt;0.565.0&amp;gt;}]&lt;/span>&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+In the example above, we use a match specification to capture the registry key (the session ID) and the registered PID.&lt;/p>
+&lt;p>
+It&amp;#39;s important to understand straight away the constraints associated with this approach:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>A &lt;code>Registry&lt;/code> is normally split into a variable number of partitions, so this query has to visit all partitions to return its results. While this is not a problem at this stage (the application has very little load), it can become a bottleneck once the number of registered processes grows.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>As data is partitioned, it&amp;#39;s not possible to apply sort order or limit the results without concatenating them all first, which means that both operations will need to be done by the caller.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Results only apply to the current node, which works well with Phoenix Live Dashboard&amp;#39;s general structure, which always operates on one node at a time.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;p>Given the registry query above, we can implement a function that provides the data necessary to populate an unfiltered, unsorted version of the table:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir">&lt;span style="color:#66d9ef">defmodule&lt;/span> &lt;span style="color:#a6e22e">Tune.Spotify.Supervisor&lt;/span> &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#75715e"># omitted&lt;/span>
+&lt;span style="color:#66d9ef">def&lt;/span> sessions &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#a6e22e">Tune.Spotify.SessionRegistry&lt;/span>
+&lt;span style="color:#f92672">|&amp;gt;&lt;/span> &lt;span style="color:#a6e22e">Registry&lt;/span>&lt;span style="color:#f92672">.&lt;/span>select([{{&lt;span style="color:#e6db74">:&amp;#34;$1&amp;#34;&lt;/span>, &lt;span style="color:#e6db74">:&amp;#34;$2&amp;#34;&lt;/span>, &lt;span style="color:#e6db74">:_&lt;/span>}, [], [{{&lt;span style="color:#e6db74">:&amp;#34;$1&amp;#34;&lt;/span>, &lt;span style="color:#e6db74">:&amp;#34;$2&amp;#34;&lt;/span>}}]}])
+&lt;span style="color:#f92672">|&amp;gt;&lt;/span> &lt;span style="color:#a6e22e">Enum&lt;/span>&lt;span style="color:#f92672">.&lt;/span>map(&lt;span style="color:#66d9ef">fn&lt;/span> {id, pid} &lt;span style="color:#f92672">-&amp;gt;&lt;/span>
+subscribers_count &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#a6e22e">Tune.Spotify.Session.HTTP&lt;/span>&lt;span style="color:#f92672">.&lt;/span>subscribers_count(id)
+%{&lt;span style="color:#e6db74">id&lt;/span>: id, &lt;span style="color:#e6db74">pid&lt;/span>: pid, &lt;span style="color:#e6db74">clients_count&lt;/span>: subscribers_count}
+&lt;span style="color:#66d9ef">end&lt;/span>)
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+The resulting data structure is a map with the necessary data:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir">[%{&lt;span style="color:#e6db74">clients_count&lt;/span>: &lt;span style="color:#ae81ff">1&lt;/span>, &lt;span style="color:#e6db74">id&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;claudio.ortolina&amp;#34;&lt;/span>, &lt;span style="color:#e6db74">pid&lt;/span>: &lt;span style="color:#75715e">#PID&amp;lt;0.565.0&amp;gt;}]&lt;/span>&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-headline-4" class="outline-2">
+&lt;h2 id="headline-4">
+Dashboard page structure
+&lt;/h2>
+&lt;div id="outline-text-headline-4" class="outline-text-2">
+&lt;p>
+To build a dashboard page, we need to:&lt;/p>
+&lt;ol>
+&lt;li>
+&lt;p>Create a module that implements the &lt;code>use Phoenix.LiveDashboard.PageBuilder&lt;/code> behaviour.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Mount that module into the Live Dashboard configuration defined into our application router.&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;p>What follows is a minimal implementation that shows the data we need, with the following limitations:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>no searching, sorting or limiting capabilities&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>works only on a single node&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir">&lt;span style="color:#66d9ef">defmodule&lt;/span> &lt;span style="color:#a6e22e">TuneWeb.LiveDashboard.SpotifySessionsPage&lt;/span> &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#a6e22e">@moduledoc&lt;/span> &lt;span style="color:#66d9ef">false&lt;/span>
+&lt;span style="color:#f92672">use&lt;/span> &lt;span style="color:#a6e22e">Phoenix.LiveDashboard.PageBuilder&lt;/span>
+&lt;span style="color:#a6e22e">@impl&lt;/span> &lt;span style="color:#66d9ef">true&lt;/span>
+&lt;span style="color:#66d9ef">def&lt;/span> menu_link(_, _) &lt;span style="color:#66d9ef">do&lt;/span>
+{&lt;span style="color:#e6db74">:ok&lt;/span>, &lt;span style="color:#e6db74">&amp;#34;Spotify Sessions&amp;#34;&lt;/span>}
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#a6e22e">@impl&lt;/span> &lt;span style="color:#66d9ef">true&lt;/span>
+&lt;span style="color:#66d9ef">def&lt;/span> render_page(_assigns) &lt;span style="color:#66d9ef">do&lt;/span>
+table(
+&lt;span style="color:#e6db74">columns&lt;/span>: columns(),
+&lt;span style="color:#e6db74">id&lt;/span>: &lt;span style="color:#e6db74">:spotify_sessions&lt;/span>,
+&lt;span style="color:#e6db74">row_attrs&lt;/span>: &lt;span style="color:#f92672">&amp;amp;&lt;/span>row_attrs&lt;span style="color:#f92672">/&lt;/span>&lt;span style="color:#ae81ff">1&lt;/span>,
+&lt;span style="color:#e6db74">row_fetcher&lt;/span>: &lt;span style="color:#f92672">&amp;amp;&lt;/span>fetch_sessions&lt;span style="color:#f92672">/&lt;/span>&lt;span style="color:#ae81ff">2&lt;/span>,
+&lt;span style="color:#e6db74">rows_name&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;sessions&amp;#34;&lt;/span>,
+&lt;span style="color:#e6db74">title&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;Spotify Sessions&amp;#34;&lt;/span>
+)
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">defp&lt;/span> fetch_sessions(_params, _node) &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#75715e"># returns [%{clients_count: 1, id: &amp;#34;claudio.ortolina&amp;#34;, pid: #PID&amp;lt;0.565.0&amp;gt;}]&lt;/span>
+sessions &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#a6e22e">Tune.Spotify.Supervisor&lt;/span>&lt;span style="color:#f92672">.&lt;/span>sessions()
+{sessions, length(sessions)}
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">defp&lt;/span> columns &lt;span style="color:#66d9ef">do&lt;/span>
+[
+%{&lt;span style="color:#e6db74">field&lt;/span>: &lt;span style="color:#e6db74">:id&lt;/span>, &lt;span style="color:#e6db74">header&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;Session ID&amp;#34;&lt;/span>, &lt;span style="color:#e6db74">sortable&lt;/span>: &lt;span style="color:#e6db74">:asc&lt;/span>},
+%{
+&lt;span style="color:#e6db74">field&lt;/span>: &lt;span style="color:#e6db74">:pid&lt;/span>,
+&lt;span style="color:#e6db74">header&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;Worker PID&amp;#34;&lt;/span>,
+&lt;span style="color:#e6db74">format&lt;/span>: &lt;span style="color:#f92672">&amp;amp;&lt;/span>(&amp;amp;1 &lt;span style="color:#f92672">|&amp;gt;&lt;/span> encode_pid() &lt;span style="color:#f92672">|&amp;gt;&lt;/span> &lt;span style="color:#a6e22e">String&lt;/span>&lt;span style="color:#f92672">.&lt;/span>replace_prefix(&lt;span style="color:#e6db74">&amp;#34;PID&amp;#34;&lt;/span>, &lt;span style="color:#e6db74">&amp;#34;&amp;#34;&lt;/span>))
+},
+%{&lt;span style="color:#e6db74">field&lt;/span>: &lt;span style="color:#e6db74">:clients_count&lt;/span>, &lt;span style="color:#e6db74">header&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;Clients count&amp;#34;&lt;/span>, &lt;span style="color:#e6db74">sortable&lt;/span>: &lt;span style="color:#e6db74">:asc&lt;/span>}
+]
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">defp&lt;/span> row_attrs(session) &lt;span style="color:#66d9ef">do&lt;/span>
+[
+{&lt;span style="color:#e6db74">&amp;#34;phx-click&amp;#34;&lt;/span>, &lt;span style="color:#e6db74">&amp;#34;show_info&amp;#34;&lt;/span>},
+{&lt;span style="color:#e6db74">&amp;#34;phx-value-info&amp;#34;&lt;/span>, encode_pid(session[&lt;span style="color:#e6db74">:pid&lt;/span>])},
+{&lt;span style="color:#e6db74">&amp;#34;phx-page-loading&amp;#34;&lt;/span>, &lt;span style="color:#66d9ef">true&lt;/span>}
+]
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">end&lt;/span>&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+The main ingredients of this implementation are:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>The &lt;code>use Phoenix.LiveDashboard.PageBuilder&lt;/code> directive, which adopts the behaviour with the same name and imports some convenience functions useful for building pages (e.g. &lt;code>encode_pid/1&lt;/code>).&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>The &lt;code>menu_link/2&lt;/code> callback, which is used to define the name of the page and its label in the top navigation bar.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>The &lt;code>render_page/2&lt;/code> callback, which has to return a valid &lt;a href="https://hexdocs.pm/phoenix_live_dashboard/Phoenix.LiveDashboard.PageBuilder.html#t:component/0">&lt;code>component&lt;/code>&lt;/a> - in this case via the &lt;a href="https://hexdocs.pm/phoenix_live_dashboard/Phoenix.LiveDashboard.PageBuilder.html#table/1">&lt;code>table/1&lt;/code>&lt;/a> function.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;p>The table definition has a few moving parts:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>An &lt;code>id&lt;/code> (unique among other Live Dashboard pages).&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>A &lt;code>title&lt;/code>, shown in the page.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>A &lt;code>rows_name&lt;/code>, interpolated in the short text blurb that details the total amount of results.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>A &lt;code>columns&lt;/code> attribute, which is a list of maps detailing the properties of each column.&lt;/p>
+&lt;p>
+For each column, the &lt;code>id&lt;/code> property has to map to a key in the data we will use to populate the table.&lt;/p>
+&lt;p>
+The &lt;code>sortable&lt;/code> property defines which column can be used for sorting (by clicking on the header chevron). Note that unless you specify a &lt;code>default_sort_by&lt;/code> attribute for the entire table, you have to have at least one column with the &lt;code>sortable&lt;/code> property defined, otherwise you will get a compile error.&lt;/p>
+&lt;p>
+The &lt;code>format&lt;/code> function takes the raw value for a cell in the column and transforms it to a string. It&amp;#39;s useful to provide a string representation of the value that is suitable for an HTML table. In the code above, we copy the format function defined in &lt;a href="https://github.com/phoenixframework/phoenix_live_dashboard/blob/8d7148d9c333a27766ee8bc971d4dba93c0f9695/lib/phoenix/live_dashboard/pages/processes_page.ex#L34">the Processes Live Dashboard page&lt;/a>.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>A &lt;code>row_attrs&lt;/code> function, which takes the data for each row and has to return a list of tuples representing the Phoenix LiveView attributes to apply to the table row itself. Defining attribute is necessary to enable functionality activated by clicking on the row itself. The implementation in this example lets you inspect the session PID in a modal overlay.&lt;/p>
+&lt;p>
+Similar to the &lt;code>format&lt;/code> function, we leverage &lt;code>encode_pid/1&lt;/code> to format the PID as string compatible with the &lt;code>show_info&lt;/code> LiveView event.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>A &lt;code>row_fetcher&lt;/code> function, which takes the current &lt;code>params&lt;/code> (search query, limit, sort key, sort direction) and the current node, and returns the data used to populate the table.&lt;/p>
+&lt;p>
+The return value has to conform to a tuple shape where the first value is a list of sessions (in the shape of maps with the same keys used for column ids) and the second value is the total number of results (irrespectively of the limit).&lt;/p>
+&lt;p>
+As we implemented &lt;code>Tune.Spotify.Supervisor.sessions/0&lt;/code> taking care of using the same key names, its return value perfectly fits the expectations of the &lt;code>row_fetcher&lt;/code> function.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-headline-5" class="outline-2">
+&lt;h2 id="headline-5">
+Mounting the dashboard page
+&lt;/h2>
+&lt;div id="outline-text-headline-5" class="outline-text-2">
+&lt;p>
+To have the page up and running, we need to modify the &lt;code>live_dashboard/2&lt;/code> function inside the application router:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir">live_dashboard &lt;span style="color:#e6db74">&amp;#34;/dashboard&amp;#34;&lt;/span>,
+&lt;span style="color:#e6db74">metrics&lt;/span>: &lt;span style="color:#a6e22e">TuneWeb.Telemetry&lt;/span>,
+&lt;span style="color:#e6db74">metrics_history&lt;/span>: {&lt;span style="color:#a6e22e">TuneWeb.Telemetry.Storage&lt;/span>, &lt;span style="color:#e6db74">:metrics_history&lt;/span>, []},
+&lt;span style="color:#e6db74">additional_pages&lt;/span>: [
+&lt;span style="color:#e6db74">spotify_sessions&lt;/span>: &lt;span style="color:#a6e22e">TuneWeb.LiveDashboard.SpotifySessionsPage&lt;/span>
+]&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-headline-6" class="outline-2">
+&lt;h2 id="headline-6">
+Filters and limits
+&lt;/h2>
+&lt;div id="outline-text-headline-6" class="outline-text-2">
+&lt;p>
+We can now focus on implementing search, sorting and limits. Conceptually, we need to:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>If specified, apply the search filter.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Always apply sort order.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Count the sorted elements, to return the correct total.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Always apply the limit clause to the sorted elements.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;p>All of these operations have to be handled by the implementation of the &lt;code>row_fetcher&lt;/code> function.&lt;/p>
+&lt;p>
+The params map has the following keys:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>&lt;code>:search&lt;/code>: the string representing the contents of the search input (or &lt;code>nil&lt;/code> when empty).&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>:sort_by&lt;/code>: the id of the column to sort by.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>:sort_dir&lt;/code>: the sort direction, expressed with the atoms &lt;code>:asc&lt;/code> and &lt;code>:desc&lt;/code>.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>:limit&lt;/code>: the integer value representing the amount of max items requested by the user.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;p>The params map is very well thought out, as it has a fixed structure, applied defaults where available and values that play well with functions from the &lt;code>Enum&lt;/code> module.&lt;/p>
+&lt;p>
+We can extend the &lt;code>fetch_sessions/2&lt;/code> function as follows:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir">&lt;span style="color:#66d9ef">defmodule&lt;/span> &lt;span style="color:#a6e22e">TuneWeb.LiveDashboard.SpotifySessionsPage&lt;/span> &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;span style="color:#75715e"># omitted&lt;/span>
+&lt;span style="color:#66d9ef">defp&lt;/span> fetch_sessions(params, _node) &lt;span style="color:#66d9ef">do&lt;/span>
+sessions &lt;span style="color:#f92672">=&lt;/span>
+&lt;span style="color:#a6e22e">Tune.Spotify.Supervisor&lt;/span>&lt;span style="color:#f92672">.&lt;/span>sessions()
+&lt;span style="color:#f92672">|&amp;gt;&lt;/span> filter(params)
+{&lt;span style="color:#a6e22e">Enum&lt;/span>&lt;span style="color:#f92672">.&lt;/span>take(sessions, params[&lt;span style="color:#e6db74">:limit&lt;/span>]), length(sessions)}
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">defp&lt;/span> filter(sessions, params) &lt;span style="color:#66d9ef">do&lt;/span>
+sessions
+&lt;span style="color:#f92672">|&amp;gt;&lt;/span> &lt;span style="color:#a6e22e">Enum&lt;/span>&lt;span style="color:#f92672">.&lt;/span>filter(&lt;span style="color:#66d9ef">fn&lt;/span> session &lt;span style="color:#f92672">-&amp;gt;&lt;/span> session_match?(session, params[&lt;span style="color:#e6db74">:search&lt;/span>]) &lt;span style="color:#66d9ef">end&lt;/span>)
+&lt;span style="color:#f92672">|&amp;gt;&lt;/span> &lt;span style="color:#a6e22e">Enum&lt;/span>&lt;span style="color:#f92672">.&lt;/span>sort_by(&lt;span style="color:#66d9ef">fn&lt;/span> session &lt;span style="color:#f92672">-&amp;gt;&lt;/span> session[params[&lt;span style="color:#e6db74">:sort_by&lt;/span>]] &lt;span style="color:#66d9ef">end&lt;/span>, params[&lt;span style="color:#e6db74">:sort_dir&lt;/span>])
+&lt;span style="color:#66d9ef">end&lt;/span>
+&lt;span style="color:#66d9ef">defp&lt;/span> session_match?(_session, &lt;span style="color:#66d9ef">nil&lt;/span>), &lt;span style="color:#e6db74">do&lt;/span>: &lt;span style="color:#66d9ef">true&lt;/span>
+&lt;span style="color:#66d9ef">defp&lt;/span> session_match?(session, search_string), &lt;span style="color:#e6db74">do&lt;/span>: &lt;span style="color:#a6e22e">String&lt;/span>&lt;span style="color:#f92672">.&lt;/span>contains?(session[&lt;span style="color:#e6db74">:id&lt;/span>], search_string)
+&lt;span style="color:#66d9ef">end&lt;/span>&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+As outlined above, we start by filtering by search, using a very simple logic that just checks if the session ID contains the searched string.&lt;/p>
+&lt;p>
+After search, we apply the sorting logic: the values of the &lt;code>:sort_by&lt;/code> and &lt;code>:sort_dir&lt;/code> perfectly fit using &lt;code>Enum.sort_by/3&lt;/code> (a really appreciated API design choice), making the implementation short and sweet.&lt;/p>
+&lt;p>
+When defining the returning tuple, we take care of applying the limit and returning the correct total count.&lt;/p>
+&lt;p>
+With these changes in place, the generated table behaves as expected:&lt;/p>
+&lt;p>
+&lt;img src="http://claudio-ortolina.org/img/building-a-custom-page-for-phoenix-live-dashboard/sessions-table.png" alt="A screenshot of the Spotify sessions table built in this blog post" class="left" />
+&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-headline-7" class="outline-2">
+&lt;h2 id="headline-7">
+Supporting multiple nodes
+&lt;/h2>
+&lt;div id="outline-text-headline-7" class="outline-text-2">
+&lt;p>
+The last piece of the puzzle is making sure that we take into account the currently selected node.&lt;/p>
+&lt;p>
+Fortunately, we just need to make a very small change to &lt;code>fetch_sessions/2&lt;/code>:&lt;/p>
+&lt;div class="src src-elixir">
+&lt;div class="highlight">&lt;pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-elixir" data-lang="elixir">&lt;span style="color:#66d9ef">defp&lt;/span> fetch_sessions(params, node) &lt;span style="color:#66d9ef">do&lt;/span>
+sessions &lt;span style="color:#f92672">=&lt;/span>
+node
+&lt;span style="color:#f92672">|&amp;gt;&lt;/span> &lt;span style="color:#e6db74">:rpc&lt;/span>&lt;span style="color:#f92672">.&lt;/span>call(&lt;span style="color:#a6e22e">Tune.Spotify.Supervisor&lt;/span>, &lt;span style="color:#e6db74">:sessions&lt;/span>, [])
+&lt;span style="color:#f92672">|&amp;gt;&lt;/span> filter(params)
+{&lt;span style="color:#a6e22e">Enum&lt;/span>&lt;span style="color:#f92672">.&lt;/span>take(sessions, params[&lt;span style="color:#e6db74">:limit&lt;/span>]), length(sessions)}
+&lt;span style="color:#66d9ef">end&lt;/span>&lt;/code>&lt;/pre>&lt;/div>
+&lt;/div>
+&lt;p>
+The OTP &lt;a href="https://erlang.org/doc/man/rpc.html">rpc&lt;/a> module conveniently provides a &lt;a href="https://erlang.org/doc/man/rpc.html#call-4">&lt;code>call/4&lt;/code>&lt;/a> function that takes a node name, module, function, and arguments, returning the exact same value of the remotely executed function.&lt;/p>
+&lt;/div>
+&lt;/div>
+&lt;div id="outline-container-headline-8" class="outline-2">
+&lt;h2 id="headline-8">
+Conclusions
+&lt;/h2>
+&lt;div id="outline-text-headline-8" class="outline-text-2">
+&lt;p>
+To see the final version of &lt;code>TuneWeb.LiveDashboard.SpotifySessionsPage&lt;/code>, you can open &lt;a href="https://github.com/fully-forged/tune/blob/32038997bc89f94ca8ee18f80d2f1cae946f7acb/lib/tune_web/live_dashboard/spotify_sessions_page.ex">the file in the repo&lt;/a>.&lt;/p>
+&lt;/div>
+&lt;/div></description></item><item><title>Tips for Finch and Telemetry</title><link>http://claudio-ortolina.org/posts/tips-for-finch-and-telemetry/</link><pubDate>Tue, 17 Nov 2020 17:27:05 +0000</pubDate><guid>http://claudio-ortolina.org/posts/tips-for-finch-and-telemetry/</guid><description>
 &lt;p>
 While working on &lt;a href="https://github.com/fully-forged/tune">Tune&lt;/a>, I needed to collect performance metrics related to the interaction with the Spotify API.&lt;/p>
 &lt;p>
