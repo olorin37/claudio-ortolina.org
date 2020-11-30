@@ -360,7 +360,7 @@ Conclusions
 &lt;p>
 To see the final version of &lt;code>TuneWeb.LiveDashboard.SpotifySessionsPage&lt;/code>, you can open &lt;a href="https://github.com/fully-forged/tune/blob/32038997bc89f94ca8ee18f80d2f1cae946f7acb/lib/tune_web/live_dashboard/spotify_sessions_page.ex">the file in the repo&lt;/a>.&lt;/p>
 &lt;/div>
-&lt;/div></description></item><item><title>Tips for Finch and Telemetry</title><link>http://claudio-ortolina.org/posts/tips-for-finch-and-telemetry/</link><pubDate>Tue, 17 Nov 2020 17:27:05 +0000</pubDate><guid>http://claudio-ortolina.org/posts/tips-for-finch-and-telemetry/</guid><description>
+&lt;/div></description></item><item><title>Tips for Finch, Telemetry, and Phoenix Live Dashboard</title><link>http://claudio-ortolina.org/posts/tips-for-finch-and-telemetry/</link><pubDate>Tue, 17 Nov 2020 17:27:05 +0000</pubDate><guid>http://claudio-ortolina.org/posts/tips-for-finch-and-telemetry/</guid><description>
 &lt;p>
 While working on &lt;a href="https://github.com/fully-forged/tune">Tune&lt;/a>, I needed to collect performance metrics related to the interaction with the Spotify API.&lt;/p>
 &lt;p>
